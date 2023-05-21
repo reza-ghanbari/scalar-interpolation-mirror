@@ -5505,6 +5505,7 @@ VectorizationFactor LoopVectorizationPlanner::selectVectorizationFactor(
              << "LV: Vectorization seems to be not beneficial, "
              << "but was forced by a user.\n");
   LLVM_DEBUG(dbgs() << "LV: Selecting VF: " << ChosenFactor.Width << ".\n");
+  Explorer->setProfitableVFs(ProfitableVFs);
   return ChosenFactor;
 }
 
@@ -10204,10 +10205,13 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   // Use the planner for vectorization.
   LoopVectorizationPlanner LVP(L, LI, TLI, *TTI, &LVL, CM, IAI, PSE, Hints,
                                ORE);
+  VPlanExplorer* VPE = new VPlanExplorer();
+  LVP.setExplorer(VPE);
 
   // Get user vectorization factor and interleave count.
   ElementCount UserVF = Hints.getWidth();
   unsigned UserIC = Hints.getInterleave();
+//  TODO: get user scalar interpolation factor here
 
   // Plan how to best vectorize, return the best VF and its cost.
   std::optional<VectorizationFactor> MaybeVF = LVP.plan(UserVF, UserIC);
