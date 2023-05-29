@@ -27,7 +27,6 @@
 #include "VPlan.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/InstructionCost.h"
-#include "ScalarInterpolation.h"
 
 namespace llvm {
 
@@ -298,8 +297,6 @@ class LoopVectorizationPlanner {
   /// A builder used to construct the current plan.
   VPBuilder Builder;
 
-  VPlanExplorer *Explorer;
-
 public:
   LoopVectorizationPlanner(Loop *L, LoopInfo *LI, const TargetLibraryInfo *TLI,
                            const TargetTransformInfo &TTI,
@@ -311,8 +308,6 @@ public:
                            OptimizationRemarkEmitter *ORE)
       : OrigLoop(L), LI(LI), TLI(TLI), TTI(TTI), Legal(Legal), CM(CM), IAI(IAI),
         PSE(PSE), Hints(Hints), ORE(ORE) {}
-
-  void setExplorer(VPlanExplorer *Exp) { Explorer = Exp; }
 
   /// Plan how to best vectorize, return the best VF and its cost, or
   /// std::nullopt if vectorization and interleaving should be avoided up front.

@@ -127,6 +127,7 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
                  .Case("interleave", LoopHintAttr::Interleave)
                  .Case("vectorize_predicate", LoopHintAttr::VectorizePredicate)
                  .Case("interleave_count", LoopHintAttr::InterleaveCount)
+                 .Case("scalar_interpolation_count", LoopHintAttr::ScalarInterpolationCount)
                  .Case("unroll", LoopHintAttr::Unroll)
                  .Case("unroll_count", LoopHintAttr::UnrollCount)
                  .Case("pipeline", LoopHintAttr::PipelineDisabled)
@@ -145,6 +146,7 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
         State = LoopHintAttr::FixedWidth;
     } else if (Option == LoopHintAttr::InterleaveCount ||
                Option == LoopHintAttr::UnrollCount ||
+               Option == LoopHintAttr::ScalarInterpolationCount ||
                Option == LoopHintAttr::PipelineInitiationInterval) {
       assert(ValueExpr && "Attribute must have a valid value expression.");
       if (S.CheckLoopHintExpr(ValueExpr, St->getBeginLoc()))
@@ -347,6 +349,8 @@ CheckForIncompatibleAttributes(Sema &S,
     Interleave,
     UnrollAndJam,
     Pipeline,
+    // scalar interpolation is only used with numerical values
+    ScalarInterpolation,
     // For unroll, default indicates full unrolling rather than enabling the
     // transformation.
     Unroll,
@@ -383,6 +387,9 @@ CheckForIncompatibleAttributes(Sema &S,
     case LoopHintAttr::Interleave:
     case LoopHintAttr::InterleaveCount:
       Category = Interleave;
+      break;
+    case LoopHintAttr::ScalarInterpolationCount:
+      Category = ScalarInterpolation;
       break;
     case LoopHintAttr::Unroll:
     case LoopHintAttr::UnrollCount:

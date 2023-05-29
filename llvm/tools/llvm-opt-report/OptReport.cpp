@@ -98,7 +98,7 @@ struct OptReportLocationInfo {
   OptReportLocationItemInfo Inlined;
   OptReportLocationItemInfo Unrolled;
   OptReportLocationItemInfo Vectorized;
-
+// TODO-SI: see if scalar interpolation is necessary here or not.
   int VectorizationFactor = 1;
   int InterleaveCount = 1;
   int UnrollCount = 1;
