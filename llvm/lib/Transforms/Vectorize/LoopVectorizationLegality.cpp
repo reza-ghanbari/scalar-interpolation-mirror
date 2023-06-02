@@ -107,7 +107,7 @@ LoopVectorizeHints::LoopVectorizeHints(const Loop *L,
                                        const TargetTransformInfo *TTI)
     : Width("vectorize.width", VectorizerParams::VectorizationFactor, HK_WIDTH),
       Interleave("interleave.count", InterleaveOnlyWhenForced, HK_INTERLEAVE),
-      ScalarInterpolation("scalar-interpolation.count", 0, HK_SCALAR_INTERPOLATION),
+      ScalarInterpolation("scalar.interpolation.count", 0, HK_SCALAR_INTERPOLATION),
       Force("vectorize.enable", FK_Undefined, HK_FORCE),
       IsVectorized("isvectorized", 0, HK_ISVECTORIZED),
       Predicate("vectorize.predicate.enable", FK_Undefined, HK_PREDICATE),
