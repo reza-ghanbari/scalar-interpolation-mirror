@@ -57,6 +57,7 @@
 #include "LoopVectorizationPlanner.h"
 #include "VPRecipeBuilder.h"
 #include "VPlan.h"
+#include "ScalarInterpolation.h"
 #include "VPlanHCFGBuilder.h"
 #include "VPlanTransforms.h"
 #include "llvm/ADT/APInt.h"
@@ -8903,6 +8904,11 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   DFS.perform(LI);
 
   VPBasicBlock *VPBB = HeaderVPBB;
+  unsigned UserSI = Hints.getScalarInterpolation();
+//  todo-si: check legality of scalar interpolation here
+  if (UserSI) {
+    SInterpolation->unrollLoop(OrigLoop, UserSI);
+  }
   for (BasicBlock *BB : make_range(DFS.beginRPO(), DFS.endRPO())) {
     // Relevant instructions from basic block BB will be grouped into VPRecipe
     // ingredients and fill a new VPBasicBlock.
@@ -8936,10 +8942,11 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
       if ((SI = dyn_cast<StoreInst>(&I)) &&
           Legal->isInvariantAddressOfReduction(SI->getPointerOperand()))
         continue;
-
       auto RecipeOrValue = RecipeBuilder.tryToCreateWidenRecipe(
           Instr, Operands, Range, VPBB, Plan);
-      //      TODO-SI: add condition for SI count to add replications
+      SmallVector<VPValue *, 4> SIInstructions;
+
+      // TODO-SI: add condition for SI count to add replications
       if (!RecipeOrValue)
         RecipeOrValue = RecipeBuilder.handleReplication(Instr, Range, *Plan);
       // If Instr can be simplified to an existing VPValue, use it.
@@ -10203,7 +10210,7 @@ bool LoopVectorizePass::processLoop(Loop *L) {
                                 F, &Hints, IAI);
   // Use the planner for vectorization.
   LoopVectorizationPlanner LVP(L, LI, TLI, *TTI, &LVL, CM, IAI, PSE, Hints,
-                               ORE);
+                               ORE, scalarInterpolation);
 
   // Get user vectorization factor and interleave count.
   ElementCount UserVF = Hints.getWidth();
@@ -10506,6 +10513,7 @@ LoopVectorizeResult LoopVectorizePass::runImpl(
   DB = &DB_;
   ORE = &ORE_;
   PSI = PSI_;
+  scalarInterpolation = new ScalarInterpolation(SE, LI, TTI, DT, AC, ORE);
 
   // Don't attempt if
   // 1. the target claims to have no vector registers, and
