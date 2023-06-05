@@ -7513,6 +7513,21 @@ LoopVectorizationPlanner::planInVPlanNativePath(ElementCount UserVF) {
 std::optional<VectorizationFactor>
 LoopVectorizationPlanner::plan(ElementCount UserVF, unsigned UserIC) {
   assert(OrigLoop->isInnermost() && "Inner loop expected.");
+//  unsigned int UserSI = Hints.getScalarInterpolation();
+//  //  todo-si: check legality of scalar interpolation here
+//  if (UserSI) {
+//    //    LLVM_DEBUG(dbgs() << "Loop before unrolling: \n");
+//    //    OrigLoop->dump();
+//    //    for (auto& BB: OrigLoop->blocks())
+//    //      BB->dump();
+//    //    LLVM_DEBUG(dbgs() << "End loop.\n");
+//    SInterpolation->unrollLoop(OrigLoop, UserSI);
+//    //    LLVM_DEBUG(dbgs() << "Loop after unrolling: \n");
+//    //    OrigLoop->dump();
+//    //    for (auto& BB: OrigLoop->blocks())
+//    //      BB->dump();
+//    //    LLVM_DEBUG(dbgs() << "End loop.\n");
+//  }
   CM.collectValuesToIgnore();
   CM.collectElementTypesForWidening();
 
@@ -8196,6 +8211,8 @@ VPRecipeBase *VPRecipeBuilder::tryToWidenMemory(Instruction *I,
         CM.getWideningDecision(I, VF);
     assert(Decision != LoopVectorizationCostModel::CM_Unknown &&
            "CM decision should be taken at this point.");
+    LLVM_DEBUG(dbgs() << "HEYYYYYYYY! LV: CM decision for " << *I << " is "
+                      << Decision << ".\n");
     if (Decision == LoopVectorizationCostModel::CM_Interleave)
       return true;
     if (CM.isScalarAfterVectorization(I, VF) ||
@@ -8822,7 +8839,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   SmallPtrSet<const InterleaveGroup<Instruction> *, 1> InterleaveGroups;
 
   VPRecipeBuilder RecipeBuilder(OrigLoop, TLI, Legal, CM, PSE, Builder);
-
+  assert(PSE.getSE() && "HEY! Expected Scalar Evolution to be initialized");
   // ---------------------------------------------------------------------------
   // Pre-construction: record ingredients whose recipes we'll need to further
   // process after constructing the initial VPlan.
@@ -8898,18 +8915,32 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
                         DLInst ? DLInst->getDebugLoc() : DebugLoc(),
                         CM.getTailFoldingStyle(IVUpdateMayOverflow));
 
+  unsigned int UserSI = Hints.getScalarInterpolation();
+  //  todo-si: check legality of scalar interpolation here
+  if (UserSI) {
+    //    LLVM_DEBUG(dbgs() << "Loop before unrolling: \n");
+    //    OrigLoop->dump();
+    //    for (auto& BB: OrigLoop->blocks())
+    //      BB->dump();
+    //    LLVM_DEBUG(dbgs() << "End loop.\n");
+    SInterpolation->unrollLoop(OrigLoop, UserSI);
+    //    LLVM_DEBUG(dbgs() << "Loop after unrolling: \n");
+    //    OrigLoop->dump();
+    //    for (auto& BB: OrigLoop->blocks())
+    //      BB->dump();
+    //    LLVM_DEBUG(dbgs() << "End loop.\n");
+  }
+  for (ElementCount VF : Range)
+    CM.setCostBasedWideningDecision(VF);
+
   // Scan the body of the loop in a topological order to visit each basic block
   // after having visited its predecessor basic blocks.
   LoopBlocksDFS DFS(OrigLoop);
   DFS.perform(LI);
 
   VPBasicBlock *VPBB = HeaderVPBB;
-  unsigned UserSI = Hints.getScalarInterpolation();
-//  todo-si: check legality of scalar interpolation here
-  if (UserSI) {
-    SInterpolation->unrollLoop(OrigLoop, UserSI);
-  }
   for (BasicBlock *BB : make_range(DFS.beginRPO(), DFS.endRPO())) {
+    LLVM_DEBUG(dbgs() << "LV: Visiting BB:" << BB->getName() << "\n");
     // Relevant instructions from basic block BB will be grouped into VPRecipe
     // ingredients and fill a new VPBasicBlock.
     if (VPBB != HeaderVPBB)
@@ -8920,7 +8951,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
     // TODO: Model and preserve debug intrinsics in VPlan.
     for (Instruction &I : BB->instructionsWithoutDebug(false)) {
       Instruction *Instr = &I;
-
+      LLVM_DEBUG(dbgs() << "LV: Visiting Instr:" << *Instr << "\n");
       // First filter out irrelevant instructions, to ensure no recipes are
       // built for them.
       if (isa<BranchInst>(Instr) || DeadInstructions.count(Instr))
@@ -10472,7 +10503,7 @@ bool LoopVectorizePass::processLoop(Loop *L) {
                << NV("VectorizationFactor", VF.Width)
                << ", interleaved count: " << NV("InterleaveCount", IC)
                << ", scalar interpolation count: "
-               << NV("ScalarInterpolationCount", IC) << ")";
+               << NV("ScalarInterpolationCount", UserSI) << ")";
       });
     }
 
@@ -10514,7 +10545,6 @@ LoopVectorizeResult LoopVectorizePass::runImpl(
   ORE = &ORE_;
   PSI = PSI_;
   scalarInterpolation = new ScalarInterpolation(SE, LI, TTI, DT, AC, ORE);
-
   // Don't attempt if
   // 1. the target claims to have no vector registers, and
   // 2. interleaving won't help ILP.
