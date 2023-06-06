@@ -33,8 +33,9 @@ public:
     SICount = 0;
   }
   void setSICount(unsigned int SICount) { this->SICount = SICount; }
-  void unrollLoop(Loop *L, unsigned Count);
+  void generateScalarBlocks(Loop *L, unsigned SICount);
   bool isVectorizable(Instruction *I);
+  void unrollLoopWithSIFactor(Loop *L, unsigned int SICount) const;
 };
 
 } // namespace llvm

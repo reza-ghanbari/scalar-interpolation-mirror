@@ -7521,7 +7521,7 @@ LoopVectorizationPlanner::plan(ElementCount UserVF, unsigned UserIC) {
 //    //    for (auto& BB: OrigLoop->blocks())
 //    //      BB->dump();
 //    //    LLVM_DEBUG(dbgs() << "End loop.\n");
-//    SInterpolation->unrollLoop(OrigLoop, UserSI);
+//    SInterpolation->generateScalarBlocks(OrigLoop, UserSI);
 //    //    LLVM_DEBUG(dbgs() << "Loop after unrolling: \n");
 //    //    OrigLoop->dump();
 //    //    for (auto& BB: OrigLoop->blocks())
@@ -8211,8 +8211,6 @@ VPRecipeBase *VPRecipeBuilder::tryToWidenMemory(Instruction *I,
         CM.getWideningDecision(I, VF);
     assert(Decision != LoopVectorizationCostModel::CM_Unknown &&
            "CM decision should be taken at this point.");
-    LLVM_DEBUG(dbgs() << "HEYYYYYYYY! LV: CM decision for " << *I << " is "
-                      << Decision << ".\n");
     if (Decision == LoopVectorizationCostModel::CM_Interleave)
       return true;
     if (CM.isScalarAfterVectorization(I, VF) ||
@@ -8918,20 +8916,10 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   unsigned int UserSI = Hints.getScalarInterpolation();
   //  todo-si: check legality of scalar interpolation here
   if (UserSI) {
-    //    LLVM_DEBUG(dbgs() << "Loop before unrolling: \n");
-    //    OrigLoop->dump();
-    //    for (auto& BB: OrigLoop->blocks())
-    //      BB->dump();
-    //    LLVM_DEBUG(dbgs() << "End loop.\n");
-    SInterpolation->unrollLoop(OrigLoop, UserSI);
-    //    LLVM_DEBUG(dbgs() << "Loop after unrolling: \n");
-    //    OrigLoop->dump();
-    //    for (auto& BB: OrigLoop->blocks())
-    //      BB->dump();
-    //    LLVM_DEBUG(dbgs() << "End loop.\n");
+    SInterpolation->generateScalarBlocks(OrigLoop, UserSI);
+    for (ElementCount VF : Range)
+      CM.setCostBasedWideningDecision(VF);
   }
-  for (ElementCount VF : Range)
-    CM.setCostBasedWideningDecision(VF);
 
   // Scan the body of the loop in a topological order to visit each basic block
   // after having visited its predecessor basic blocks.
