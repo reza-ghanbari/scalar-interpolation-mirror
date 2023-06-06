@@ -6,6 +6,7 @@
 #define LLVM_SCALARINTERPOLATION_H
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SparseSet.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Instructions.h"
@@ -22,6 +23,7 @@ private:
   DominatorTree *DT;
   AssumptionCache *AC;
   OptimizationRemarkEmitter *ORE;
+  std::set<BasicBlock*> BlocksToVectorize;
 
 public:
   ScalarInterpolation(ScalarEvolution *SE, LoopInfo *LI,
@@ -31,7 +33,8 @@ public:
     SICount = 0;
   }
   void setSICount(unsigned int SICount) { this->SICount = SICount; }
-  std::map<BasicBlock *, bool> unrollLoop(Loop *L, unsigned Count);
+  void unrollLoop(Loop *L, unsigned Count);
+  bool isVectorizable(Instruction *I);
 };
 
 } // namespace llvm

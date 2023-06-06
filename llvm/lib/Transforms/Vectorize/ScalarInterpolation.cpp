@@ -16,8 +16,7 @@ using namespace llvm;
 
 #define DEBUG_TYPE "scalar-interpolation"
 
-std::map<BasicBlock *, bool>
-ScalarInterpolation::unrollLoop(Loop *L, unsigned int SICount) {
+void ScalarInterpolation::unrollLoop(Loop *L, unsigned int SICount) {
   LLVM_DEBUG(
       dbgs() << "ScalarInterpolation::unrollLoop is called with SI (debug): "
              << SICount << "\n");
@@ -33,5 +32,14 @@ ScalarInterpolation::unrollLoop(Loop *L, unsigned int SICount) {
 
   assert(UnrollResult != LoopUnrollResult::Unmodified && "Unrolling failed!");
   errs() << "Unrolling was successful!\n";
-  return std::map<BasicBlock *, bool>();
+//  detect original set of blocks (from the beginning to the first latch is one iteration)
+//  todo-si: find a solution for cases in which internal latches are removed
+  for (auto BB: L->blocks()) {
+    BlocksToVectorize.insert(BB);
+    if (L->isLoopExiting(BB) && DT->dominates(BB, L->getLoopLatch()))
+      break;
+  }
+}
+bool ScalarInterpolation::isVectorizable(Instruction *I) {
+  return (BlocksToVectorize.find(I->getParent()) != BlocksToVectorize.end());
 }

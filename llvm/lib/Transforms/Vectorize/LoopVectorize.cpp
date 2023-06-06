@@ -8940,7 +8940,6 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
 
   VPBasicBlock *VPBB = HeaderVPBB;
   for (BasicBlock *BB : make_range(DFS.beginRPO(), DFS.endRPO())) {
-    LLVM_DEBUG(dbgs() << "LV: Visiting BB:" << BB->getName() << "\n");
     // Relevant instructions from basic block BB will be grouped into VPRecipe
     // ingredients and fill a new VPBasicBlock.
     if (VPBB != HeaderVPBB)
@@ -8951,7 +8950,6 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
     // TODO: Model and preserve debug intrinsics in VPlan.
     for (Instruction &I : BB->instructionsWithoutDebug(false)) {
       Instruction *Instr = &I;
-      LLVM_DEBUG(dbgs() << "LV: Visiting Instr:" << *Instr << "\n");
       // First filter out irrelevant instructions, to ensure no recipes are
       // built for them.
       if (isa<BranchInst>(Instr) || DeadInstructions.count(Instr))
@@ -8973,8 +8971,9 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
       if ((SI = dyn_cast<StoreInst>(&I)) &&
           Legal->isInvariantAddressOfReduction(SI->getPointerOperand()))
         continue;
-      auto RecipeOrValue = RecipeBuilder.tryToCreateWidenRecipe(
-          Instr, Operands, Range, VPBB, Plan);
+      auto RecipeOrValue = SInterpolation->isVectorizable(Instr)
+                               ? RecipeBuilder.tryToCreateWidenRecipe(Instr, Operands, Range, VPBB, Plan)
+                               : nullptr;
       SmallVector<VPValue *, 4> SIInstructions;
 
       // TODO-SI: add condition for SI count to add replications
