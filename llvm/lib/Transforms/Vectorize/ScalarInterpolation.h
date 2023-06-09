@@ -5,11 +5,13 @@
 #ifndef LLVM_SCALARINTERPOLATION_H
 #define LLVM_SCALARINTERPOLATION_H
 
+#include "VPlan.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SparseSet.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include <map>
 
 namespace llvm {
@@ -24,7 +26,13 @@ private:
   AssumptionCache *AC;
   OptimizationRemarkEmitter *ORE;
   std::set<BasicBlock*> BlocksToVectorize;
-
+  std::vector<ValueToValueMapTy> LastValueMaps;
+  BasicBlock* Header;
+  BasicBlock* LatchBlock;
+  std::vector<BasicBlock *> Headers;
+  std::vector<BasicBlock *> Latches;
+  std::vector<PHINode*> OrigPHINode;
+  SmallVector<BasicBlock *, 4> ExitBlocks;
 public:
   ScalarInterpolation(ScalarEvolution *SE, LoopInfo *LI,
                       TargetTransformInfo *TTI, DominatorTree *DT,
@@ -33,6 +41,8 @@ public:
     SICount = 0;
   }
   void setSICount(unsigned int SICount) { this->SICount = SICount; }
+  VPBasicBlock *createVectorBlock(BasicBlock *BB);
+  void initializeSIDataStructures(Loop* L);
   void generateScalarBlocks(Loop *L, unsigned SICount);
   bool isVectorizable(Instruction *I);
   void unrollLoopWithSIFactor(Loop *L, unsigned int SICount) const;

@@ -41,19 +41,18 @@ void ScalarInterpolation::generateScalarBlocks(Loop *L, unsigned int SICount) {
 void ScalarInterpolation::unrollLoopWithSIFactor(Loop *L,
                                                  unsigned int SICount) const {
   LLVM_DEBUG(
-      errs() << "ScalarInterpolation::generateScalarBlocks is called with SI (debug): "
-             << SICount << "\n");
-  errs() << "ScalarInterpolation::generateScalarBlocks is called with SI: " << SICount
-         << "\n";
+      errs()
+      << "ScalarInterpolation::generateScalarBlocks is called with SI (debug): "
+      << SICount << "\n");
+  errs() << "ScalarInterpolation::generateScalarBlocks is called with SI: "
+         << SICount << "\n";
   //  generate proper factors for loop unrolling
-  UnrollLoopOptions ULO = {
-      /*Count*/ SICount + 1,
-      /*Force*/ false,
-      /*Runtime*/ false,
-      /*AllowExpensiveTripCount*/ false,
-      /*UnrollRemainder*/ false,
-      /*ForgetAllSCEV*/ true
-  };
+  UnrollLoopOptions ULO = {/*Count*/ SICount + 1,
+                           /*Force*/ false,
+                           /*Runtime*/ false,
+                           /*AllowExpensiveTripCount*/ false,
+                           /*UnrollRemainder*/ false,
+                           /*ForgetAllSCEV*/ true};
   //  unroll the loop
   Loop *RemainderLoop = nullptr;
   LoopUnrollResult UnrollResult = UnrollLoop(
@@ -62,6 +61,39 @@ void ScalarInterpolation::unrollLoopWithSIFactor(Loop *L,
   assert(UnrollResult != LoopUnrollResult::Unmodified && "Unrolling failed!");
   errs() << "Unrolling was successful!\n";
 }
+
 bool ScalarInterpolation::isVectorizable(Instruction *I) {
   return (BlocksToVectorize.find(I->getParent()) != BlocksToVectorize.end());
+}
+
+void ScalarInterpolation::initializeSIDataStructures(Loop *L) {
+  LastValueMaps = std::vector<ValueToValueMapTy>(SICount);
+  Header = L->getHeader();
+  LatchBlock = L->getLoopLatch();
+  L->getExitBlocks(ExitBlocks);
+  for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
+    OrigPHINode.push_back(cast<PHINode>(I));
+  }
+  Headers.push_back(Header);
+  Latches.push_back(LatchBlock);
+}
+
+VPBasicBlock *ScalarInterpolation::createVectorBlock(BasicBlock *BB) {
+  for (int It = 0; It < SICount; ++It) {
+    ValueToValueMapTy VMap;
+    BasicBlock *copiedBB = CloneBasicBlock(BB, VMap, ".si" + Twine(It + 1));
+
+    if (BB == Header)
+      for (PHINode *OrigPHI : OrigPHINode) {
+        PHINode *NewPHI = cast<PHINode>(VMap[OrigPHI]);
+        VMap[OrigPHI] = NewPHI->getIncomingValueForBlock(LatchBlock);
+        NewPHI->eraseFromParent();
+      }
+    LastValueMaps[It][BB] = copiedBB;
+    for (ValueToValueMapTy::iterator VI = VMap.begin(); VI != VMap.end(); ++VI)
+      LastValueMaps[It][VI->first] = VI->second;
+
+    remapInstructionsInBlocks({copiedBB}, LastValueMaps[It]);
+  }
+  return nullptr;
 }
