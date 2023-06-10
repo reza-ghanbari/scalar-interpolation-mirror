@@ -84,7 +84,7 @@ void ScalarInterpolation::initializeSIDataStructures(Loop *OriginalLoop) {
 SmallVector<BasicBlock *>
 ScalarInterpolation::createScalarBasicBlocks(BasicBlock *BB) {
   SmallVector<BasicBlock *, 4> NewBBs;
-  for (int It = 0; It < SICount; ++It) {
+  for (unsigned It = 0; It < SICount; ++It) {
     ValueToValueMapTy VMap;
     BasicBlock *CopiedBB = CloneBasicBlock(BB, VMap, ".si" + Twine(It + 1));
 
@@ -116,7 +116,7 @@ ScalarInterpolation::createScalarBasicBlocks(BasicBlock *BB) {
 
 SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
     BasicBlock *InputBasicBlock, VPBuilder Builder,
-    SmallPtrSetImpl<Instruction *> &DeadInstructions, VPlanPtr Plan,
+    SmallPtrSetImpl<Instruction *> &DeadInstructions, VPlan &Plan,
     VPRecipeBuilder RecipeBuilder, LoopVectorizationLegality *Legal,
     VFRange &Range) {
   auto NewBBs = createScalarBasicBlocks(InputBasicBlock);
@@ -141,10 +141,10 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
       SmallVector<VPValue *, 4> Operands;
       auto *Phi = dyn_cast<PHINode>(Instr);
       if (Phi && Phi->getParent() == Header) {
-        Operands.push_back(Plan->getVPValueOrAddLiveIn(
+        Operands.push_back(Plan.getVPValueOrAddLiveIn(
             Phi->getIncomingValueForBlock(L->getLoopPreheader())));
       } else {
-        auto OpRange = Plan->mapToVPValues(Instr->operands());
+        auto OpRange = Plan.mapToVPValues(Instr->operands());
         Operands = {OpRange.begin(), OpRange.end()};
       }
 
@@ -154,11 +154,11 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
       if ((SI = dyn_cast<StoreInst>(&I)) &&
           Legal->isInvariantAddressOfReduction(SI->getPointerOperand()))
         continue;
-      auto RecipeOrValue = RecipeBuilder.handleReplication(Instr, Range, *Plan);
+      auto RecipeOrValue = RecipeBuilder.handleReplication(Instr, Range, Plan);
       // If Instr can be simplified to an existing VPValue, use it.
       if (isa<VPValue *>(RecipeOrValue)) {
         auto *VPV = cast<VPValue *>(RecipeOrValue);
-        Plan->addVPValue(Instr, VPV);
+        Plan.addVPValue(Instr, VPV);
         // If the re-used value is a recipe, register the recipe for the
         // instruction, in case the recipe for Instr needs to be recorded.
         if (VPRecipeBase *R = VPV->getDefiningRecipe())
@@ -169,7 +169,7 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
       VPRecipeBase *Recipe = cast<VPRecipeBase *>(RecipeOrValue);
       for (auto *Def : Recipe->definedValues()) {
         auto *UV = Def->getUnderlyingValue();
-        Plan->addVPValue(UV, Def);
+        Plan.addVPValue(UV, Def);
       }
 
       RecipeBuilder.setRecipe(Instr, Recipe);

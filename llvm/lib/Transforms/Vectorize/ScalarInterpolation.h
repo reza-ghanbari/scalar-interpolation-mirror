@@ -5,7 +5,6 @@
 #ifndef LLVM_SCALARINTERPOLATION_H
 #define LLVM_SCALARINTERPOLATION_H
 
-#include "LoopVectorizationPlanner.h"
 #include "VPlan.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SparseSet.h"
@@ -18,6 +17,9 @@
 
 namespace llvm {
 
+class VPRecipeBuilder;
+class VPBuilder;
+
 class ScalarInterpolation {
 private:
   unsigned int SICount;
@@ -27,15 +29,16 @@ private:
   DominatorTree *DT;
   AssumptionCache *AC;
   OptimizationRemarkEmitter *ORE;
-  std::set<BasicBlock*> BlocksToVectorize;
+  std::set<BasicBlock *> BlocksToVectorize;
   std::vector<ValueToValueMapTy> LastValueMaps;
-  Loop* L;
-  BasicBlock* Header;
-  BasicBlock* LatchBlock;
+  Loop *L;
+  BasicBlock *Header;
+  BasicBlock *LatchBlock;
   std::vector<BasicBlock *> Headers;
   std::vector<BasicBlock *> Latches;
-  std::vector<PHINode*> OrigPHINode;
+  std::vector<PHINode *> OrigPHINode;
   SmallVector<BasicBlock *, 4> ExitBlocks;
+
 public:
   ScalarInterpolation(ScalarEvolution *SE, LoopInfo *LI,
                       TargetTransformInfo *TTI, DominatorTree *DT,
@@ -45,15 +48,15 @@ public:
   }
   void setSICount(unsigned int SICount) { this->SICount = SICount; }
   SmallVector<BasicBlock *> createScalarBasicBlocks(BasicBlock *BB);
-  void initializeSIDataStructures(Loop*OriginalLoop);
+  void initializeSIDataStructures(Loop *OriginalLoop);
   void generateScalarBlocks(Loop *L, unsigned SICount);
   bool isVectorizable(Instruction *I);
   void unrollLoopWithSIFactor(Loop *L, unsigned int SICount) const;
   SmallVector<VPBasicBlock *>
   generateVectorBasicBlocks(BasicBlock *InputBasicBlock,
-                            llvm::VPBuilder Builder,
+                            VPBuilder Builder,
                             SmallPtrSetImpl<Instruction *> &DeadInstructions,
-                            VPlanPtr Plan, llvm::VPRecipeBuilder RecipeBuilder,
+                            VPlan &Plan, VPRecipeBuilder RecipeBuilder,
                             LoopVectorizationLegality *Legal, VFRange &Range);
 };
 

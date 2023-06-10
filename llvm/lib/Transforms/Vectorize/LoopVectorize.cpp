@@ -7513,21 +7513,6 @@ LoopVectorizationPlanner::planInVPlanNativePath(ElementCount UserVF) {
 std::optional<VectorizationFactor>
 LoopVectorizationPlanner::plan(ElementCount UserVF, unsigned UserIC) {
   assert(OrigLoop->isInnermost() && "Inner loop expected.");
-//  unsigned int UserSI = Hints.getScalarInterpolation();
-//  //  todo-si: check legality of scalar interpolation here
-//  if (UserSI) {
-//    //    LLVM_DEBUG(dbgs() << "Loop before unrolling: \n");
-//    //    OrigLoop->dump();
-//    //    for (auto& BB: OrigLoop->blocks())
-//    //      BB->dump();
-//    //    LLVM_DEBUG(dbgs() << "End loop.\n");
-//    SInterpolation->generateScalarBlocks(OrigLoop, UserSI);
-//    //    LLVM_DEBUG(dbgs() << "Loop after unrolling: \n");
-//    //    OrigLoop->dump();
-//    //    for (auto& BB: OrigLoop->blocks())
-//    //      BB->dump();
-//    //    LLVM_DEBUG(dbgs() << "End loop.\n");
-//  }
   CM.collectValuesToIgnore();
   CM.collectElementTypesForWidening();
 
@@ -8917,9 +8902,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   //  todo-si: check legality of scalar interpolation here
   if (UserSI) {
     SInterpolation->setSICount(UserSI);
-    SInterpolation->generateScalarBlocks(OrigLoop, UserSI);
-    for (ElementCount VF : Range)
-      CM.setCostBasedWideningDecision(VF);
+    SInterpolation->initializeSIDataStructures(OrigLoop);
   }
 
   // Scan the body of the loop in a topological order to visit each basic block
@@ -8960,9 +8943,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
       if ((SI = dyn_cast<StoreInst>(&I)) &&
           Legal->isInvariantAddressOfReduction(SI->getPointerOperand()))
         continue;
-      auto RecipeOrValue = SInterpolation->isVectorizable(Instr)
-                               ? RecipeBuilder.tryToCreateWidenRecipe(Instr, Operands, Range, VPBB, Plan)
-                               : nullptr;
+      auto RecipeOrValue = RecipeBuilder.tryToCreateWidenRecipe(Instr, Operands, Range, VPBB, Plan);
       SmallVector<VPValue *, 4> SIInstructions;
 
       // TODO-SI: add condition for SI count to add replications
@@ -8997,7 +8978,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
     }
 
     if (UserSI)
-      for (auto ScalarVPBB: SInterpolation->generateVectorBasicBlocks(BB, Builder, DeadInstructions, Plan, RecipeBuilder, Range)) {
+      for (auto ScalarVPBB: SInterpolation->generateVectorBasicBlocks(BB, Builder, DeadInstructions, *Plan, RecipeBuilder, Legal, Range)) {
         VPBlockUtils::insertBlockAfter(ScalarVPBB, VPBB);
         VPBB = cast<VPBasicBlock>(VPBB->getSingleSuccessor());
       }
