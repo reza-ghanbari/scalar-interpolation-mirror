@@ -3,6 +3,8 @@
 //
 
 #include "ScalarInterpolation.h"
+#include "LoopVectorizationPlanner.h"
+#include "VPRecipeBuilder.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/Analysis/ScalarEvolution.h"
@@ -66,22 +68,25 @@ bool ScalarInterpolation::isVectorizable(Instruction *I) {
   return (BlocksToVectorize.find(I->getParent()) != BlocksToVectorize.end());
 }
 
-void ScalarInterpolation::initializeSIDataStructures(Loop *L) {
+void ScalarInterpolation::initializeSIDataStructures(Loop *OriginalLoop) {
   LastValueMaps = std::vector<ValueToValueMapTy>(SICount);
-  Header = L->getHeader();
-  LatchBlock = L->getLoopLatch();
-  L->getExitBlocks(ExitBlocks);
+  Header = OriginalLoop->getHeader();
+  LatchBlock = OriginalLoop->getLoopLatch();
+  OriginalLoop->getExitBlocks(ExitBlocks);
   for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
     OrigPHINode.push_back(cast<PHINode>(I));
   }
   Headers.push_back(Header);
   Latches.push_back(LatchBlock);
+  L = OriginalLoop;
 }
 
-VPBasicBlock *ScalarInterpolation::createVectorBlock(BasicBlock *BB) {
+SmallVector<BasicBlock *>
+ScalarInterpolation::createScalarBasicBlocks(BasicBlock *BB) {
+  SmallVector<BasicBlock *, 4> NewBBs;
   for (int It = 0; It < SICount; ++It) {
     ValueToValueMapTy VMap;
-    BasicBlock *copiedBB = CloneBasicBlock(BB, VMap, ".si" + Twine(It + 1));
+    BasicBlock *CopiedBB = CloneBasicBlock(BB, VMap, ".si" + Twine(It + 1));
 
     if (BB == Header)
       for (PHINode *OrigPHI : OrigPHINode) {
@@ -89,11 +94,88 @@ VPBasicBlock *ScalarInterpolation::createVectorBlock(BasicBlock *BB) {
         VMap[OrigPHI] = NewPHI->getIncomingValueForBlock(LatchBlock);
         NewPHI->eraseFromParent();
       }
-    LastValueMaps[It][BB] = copiedBB;
-    for (ValueToValueMapTy::iterator VI = VMap.begin(); VI != VMap.end(); ++VI)
+    LastValueMaps[It][BB] = CopiedBB;
+    for (ValueToValueMapTy::iterator VI = VMap.begin(); VI != VMap.end();
+         ++VI) {
       LastValueMaps[It][VI->first] = VI->second;
+    }
+    //    todo: try to understand what we should do for the exit blocks and
+    //    their phi nodes
 
-    remapInstructionsInBlocks({copiedBB}, LastValueMaps[It]);
+    if (BB == Header)
+      Headers.push_back(CopiedBB);
+    if (BB == LatchBlock)
+      Latches.push_back(CopiedBB);
+
+    remapInstructionsInBlocks({CopiedBB}, LastValueMaps[It]);
+    NewBBs.push_back(CopiedBB);
+    //    todo: fix the incoming value of the header phi nodes
   }
-  return nullptr;
+  return NewBBs;
+}
+
+SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
+    BasicBlock *InputBasicBlock, VPBuilder Builder,
+    SmallPtrSetImpl<Instruction *> &DeadInstructions, VPlanPtr Plan,
+    VPRecipeBuilder RecipeBuilder, LoopVectorizationLegality *Legal,
+    VFRange &Range) {
+  auto NewBBs = createScalarBasicBlocks(InputBasicBlock);
+  SmallVector<VPBasicBlock *, 4> VPBBs;
+  for (unsigned It = 0; It < SICount; ++It) {
+    auto *BB = NewBBs[It];
+    VPBasicBlock *VPBB = new VPBasicBlock();
+    VPBB->setName(BB->getName());
+    Builder.setInsertPoint(VPBB);
+
+    // Introduce each ingredient into VPlan.
+    // TODO: Model and preserve debug intrinsics in VPlan.
+    for (Instruction &I : BB->instructionsWithoutDebug(false)) {
+      Instruction *Instr = &I;
+      // First filter out irrelevant instructions, to ensure no recipes are
+      // built for them.
+      if (isa<BranchInst>(Instr) ||
+          DeadInstructions.count(
+              dyn_cast<Instruction>(LastValueMaps[It][Instr])))
+        continue;
+
+      SmallVector<VPValue *, 4> Operands;
+      auto *Phi = dyn_cast<PHINode>(Instr);
+      if (Phi && Phi->getParent() == Header) {
+        Operands.push_back(Plan->getVPValueOrAddLiveIn(
+            Phi->getIncomingValueForBlock(L->getLoopPreheader())));
+      } else {
+        auto OpRange = Plan->mapToVPValues(Instr->operands());
+        Operands = {OpRange.begin(), OpRange.end()};
+      }
+
+      // Invariant stores inside loop will be deleted and a single store
+      // with the final reduction value will be added to the exit block
+      StoreInst *SI;
+      if ((SI = dyn_cast<StoreInst>(&I)) &&
+          Legal->isInvariantAddressOfReduction(SI->getPointerOperand()))
+        continue;
+      auto RecipeOrValue = RecipeBuilder.handleReplication(Instr, Range, *Plan);
+      // If Instr can be simplified to an existing VPValue, use it.
+      if (isa<VPValue *>(RecipeOrValue)) {
+        auto *VPV = cast<VPValue *>(RecipeOrValue);
+        Plan->addVPValue(Instr, VPV);
+        // If the re-used value is a recipe, register the recipe for the
+        // instruction, in case the recipe for Instr needs to be recorded.
+        if (VPRecipeBase *R = VPV->getDefiningRecipe())
+          RecipeBuilder.setRecipe(Instr, R);
+        continue;
+      }
+      // Otherwise, add the new recipe.
+      VPRecipeBase *Recipe = cast<VPRecipeBase *>(RecipeOrValue);
+      for (auto *Def : Recipe->definedValues()) {
+        auto *UV = Def->getUnderlyingValue();
+        Plan->addVPValue(UV, Def);
+      }
+
+      RecipeBuilder.setRecipe(Instr, Recipe);
+      VPBB->appendRecipe(Recipe);
+    }
+    VPBBs.push_back(VPBB);
+  }
+  return VPBBs;
 }
