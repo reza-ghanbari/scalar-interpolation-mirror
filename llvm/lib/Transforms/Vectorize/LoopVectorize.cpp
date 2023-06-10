@@ -8916,6 +8916,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   unsigned int UserSI = Hints.getScalarInterpolation();
   //  todo-si: check legality of scalar interpolation here
   if (UserSI) {
+    SInterpolation->setSICount(UserSI);
     SInterpolation->generateScalarBlocks(OrigLoop, UserSI);
     for (ElementCount VF : Range)
       CM.setCostBasedWideningDecision(VF);
@@ -8994,6 +8995,12 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
       } else
         VPBB->appendRecipe(Recipe);
     }
+
+    if (UserSI)
+      for (auto ScalarVPBB: SInterpolation->generateVectorBasicBlocks(BB, Builder, DeadInstructions, Plan, RecipeBuilder, Range)) {
+        VPBlockUtils::insertBlockAfter(ScalarVPBB, VPBB);
+        VPBB = cast<VPBasicBlock>(VPBB->getSingleSuccessor());
+      }
 
     VPBlockUtils::insertBlockAfter(new VPBasicBlock(), VPBB);
     VPBB = cast<VPBasicBlock>(VPBB->getSingleSuccessor());
