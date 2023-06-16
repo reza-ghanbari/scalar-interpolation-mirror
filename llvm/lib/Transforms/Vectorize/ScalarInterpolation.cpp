@@ -114,6 +114,15 @@ ScalarInterpolation::createScalarBasicBlocks(BasicBlock *BB) {
   return NewBBs;
 }
 
+const Instruction* ScalarInterpolation::getInstInOriginalBB(unsigned Iteration, Instruction* I) {
+  for (auto Pair: LastValueMaps[Iteration]) {
+    if (Pair.second->getName().equals(I->getName())) {
+      return dyn_cast<Instruction>(Pair.first);
+    }
+  }
+  return nullptr;
+}
+
 SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
     BasicBlock *InputBasicBlock, VPBuilder Builder,
     SmallPtrSetImpl<Instruction *> &DeadInstructions, VPlan &Plan,
@@ -134,8 +143,7 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
       // First filter out irrelevant instructions, to ensure no recipes are
       // built for them.
       if (isa<BranchInst>(Instr) ||
-          DeadInstructions.count(
-              dyn_cast<Instruction>(LastValueMaps[It][Instr])))
+          DeadInstructions.count(getInstInOriginalBB(It, Instr)))
         continue;
 
       SmallVector<VPValue *, 4> Operands;

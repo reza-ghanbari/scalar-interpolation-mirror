@@ -39,6 +39,8 @@ private:
   std::vector<PHINode *> OrigPHINode;
   SmallVector<BasicBlock *, 4> ExitBlocks;
 
+  const Instruction *getInstInOriginalBB(unsigned int Iteration, Instruction *I);
+
 public:
   ScalarInterpolation(ScalarEvolution *SE, LoopInfo *LI,
                       TargetTransformInfo *TTI, DominatorTree *DT,
