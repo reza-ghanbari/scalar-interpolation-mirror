@@ -114,8 +114,9 @@ ScalarInterpolation::createScalarBasicBlocks(BasicBlock *BB) {
   return NewBBs;
 }
 
-const Instruction* ScalarInterpolation::getInstInOriginalBB(unsigned Iteration, Instruction* I) {
-  for (auto Pair: LastValueMaps[Iteration]) {
+const Instruction *ScalarInterpolation::getInstInOriginalBB(unsigned Iteration,
+                                                            Instruction *I) {
+  for (auto Pair : LastValueMaps[Iteration]) {
     if (Pair.second->getName().equals(I->getName())) {
       return dyn_cast<Instruction>(Pair.first);
     }
@@ -162,7 +163,7 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
       if ((SI = dyn_cast<StoreInst>(&I)) &&
           Legal->isInvariantAddressOfReduction(SI->getPointerOperand()))
         continue;
-      auto RecipeOrValue = RecipeBuilder.handleReplication(Instr, Range, Plan);
+      auto RecipeOrValue = handleReplication(RecipeBuilder, Instr, Range, Plan);
       // If Instr can be simplified to an existing VPValue, use it.
       if (isa<VPValue *>(RecipeOrValue)) {
         auto *VPV = cast<VPValue *>(RecipeOrValue);
@@ -186,4 +187,17 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
     VPBBs.push_back(VPBB);
   }
   return VPBBs;
+}
+Instruction *ScalarInterpolation::getInstInOriginalBB(Instruction *I) {
+  const Instruction* OriginalInst = nullptr;
+  for (unsigned It = 0; It < SICount; ++It) {
+    OriginalInst = getInstInOriginalBB(It, I);
+    if (OriginalInst)
+      break;
+  }
+  errs() << "CurrentInst:  " << *I << "\n";
+  if (!OriginalInst)
+    return nullptr;
+  errs() << "OriginalInst: " << *OriginalInst << "\n";
+  return const_cast<Instruction*>(OriginalInst);
 }

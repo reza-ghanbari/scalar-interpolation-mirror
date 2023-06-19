@@ -10214,6 +10214,7 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   // Use the cost model.
   LoopVectorizationCostModel CM(SEL, L, PSE, LI, &LVL, *TTI, TLI, DB, AC, ORE,
                                 F, &Hints, IAI);
+  scalarInterpolation->setCM(&CM);
   // Use the planner for vectorization.
   LoopVectorizationPlanner LVP(L, LI, TLI, *TTI, &LVL, CM, IAI, PSE, Hints,
                                ORE, scalarInterpolation);
@@ -10639,4 +10640,41 @@ void LoopVectorizePass::printPipeline(
   OS << (InterleaveOnlyWhenForced ? "" : "no-") << "interleave-forced-only;";
   OS << (VectorizeOnlyWhenForced ? "" : "no-") << "vectorize-forced-only;";
   OS << '>';
+}
+
+VPRecipeOrVPValueTy
+ScalarInterpolation::handleReplication(VPRecipeBuilder RecipeBuilder,
+                                       Instruction *I, VFRange &Range,
+                                       VPlan &Plan) {
+  assert(CM && "Cost model is not initialized!");
+  Instruction* OrigI = getInstInOriginalBB(I);
+  assert(OrigI && "Original instruction not found!");
+  bool IsUniform = LoopVectorizationPlanner::getDecisionAndClampRange(
+      [&](ElementCount VF) { return CM->isUniformAfterVectorization(OrigI, VF); },
+      Range);
+
+  bool IsPredicated = CM->isPredicatedInst(OrigI);
+
+  if (!IsUniform && Range.Start.isScalable() && isa<IntrinsicInst>(I)) {
+    switch (cast<IntrinsicInst>(I)->getIntrinsicID()) {
+    case Intrinsic::assume:
+    case Intrinsic::lifetime_start:
+    case Intrinsic::lifetime_end:
+      IsUniform = true;
+      break;
+    default:
+      break;
+    }
+  }
+  VPValue *BlockInMask = nullptr;
+  if (!IsPredicated) {
+    LLVM_DEBUG(dbgs() << "LV: Scalarizing:" << *I << "\n");
+  } else {
+    LLVM_DEBUG(dbgs() << "LV: Scalarizing and predicating:" << *I << "\n");
+    BlockInMask = RecipeBuilder.createBlockInMask(I->getParent(), Plan);
+  }
+
+  auto *Recipe = new VPReplicateRecipe(I, Plan.mapToVPValues(I->operands()),
+                                       IsUniform, BlockInMask);
+  return Recipe;
 }

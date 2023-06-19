@@ -17,6 +17,7 @@
 
 namespace llvm {
 
+class LoopVectorizationCostModel;
 class VPRecipeBuilder;
 class VPBuilder;
 
@@ -29,6 +30,7 @@ private:
   DominatorTree *DT;
   AssumptionCache *AC;
   OptimizationRemarkEmitter *ORE;
+  LoopVectorizationCostModel *CM;
   std::set<BasicBlock *> BlocksToVectorize;
   std::vector<ValueToValueMapTy> LastValueMaps;
   Loop *L;
@@ -40,6 +42,7 @@ private:
   SmallVector<BasicBlock *, 4> ExitBlocks;
 
   const Instruction *getInstInOriginalBB(unsigned int Iteration, Instruction *I);
+  Instruction *getInstInOriginalBB(Instruction *I);
 
 public:
   ScalarInterpolation(ScalarEvolution *SE, LoopInfo *LI,
@@ -47,7 +50,9 @@ public:
                       AssumptionCache *AC, OptimizationRemarkEmitter *ORE)
       : SE(SE), LI(LI), TTI(TTI), DT(DT), AC(AC), ORE(ORE) {
     SICount = 0;
+    CM = nullptr;
   }
+  void setCM(LoopVectorizationCostModel* CostModel) { this->CM = CostModel; }
   void setSICount(unsigned int SICount) { this->SICount = SICount; }
   SmallVector<BasicBlock *> createScalarBasicBlocks(BasicBlock *BB);
   void initializeSIDataStructures(Loop *OriginalLoop);
@@ -60,6 +65,9 @@ public:
                             SmallPtrSetImpl<Instruction *> &DeadInstructions,
                             VPlan &Plan, VPRecipeBuilder RecipeBuilder,
                             LoopVectorizationLegality *Legal, VFRange &Range);
+  PointerUnion<VPRecipeBase *, VPValue *>
+  handleReplication(VPRecipeBuilder RecipeBuilder, Instruction *I,
+                    VFRange &Range, VPlan &Plan);
 };
 
 } // namespace llvm
