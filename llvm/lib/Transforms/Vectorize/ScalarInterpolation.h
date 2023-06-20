@@ -68,6 +68,9 @@ public:
   PointerUnion<VPRecipeBase *, VPValue *>
   handleReplication(VPRecipeBuilder RecipeBuilder, Instruction *I,
                     VFRange &Range, VPlan &Plan);
+#ifndef NDEBUG
+  void printValueMap();
+#endif
 };
 
 } // namespace llvm

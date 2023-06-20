@@ -88,12 +88,6 @@ ScalarInterpolation::createScalarBasicBlocks(BasicBlock *BB) {
     ValueToValueMapTy VMap;
     BasicBlock *CopiedBB = CloneBasicBlock(BB, VMap, ".si" + Twine(It + 1));
 
-    if (BB == Header)
-      for (PHINode *OrigPHI : OrigPHINode) {
-        PHINode *NewPHI = cast<PHINode>(VMap[OrigPHI]);
-        VMap[OrigPHI] = NewPHI->getIncomingValueForBlock(LatchBlock);
-        NewPHI->eraseFromParent();
-      }
     LastValueMaps[It][BB] = CopiedBB;
     for (ValueToValueMapTy::iterator VI = VMap.begin(); VI != VMap.end();
          ++VI) {
@@ -114,15 +108,28 @@ ScalarInterpolation::createScalarBasicBlocks(BasicBlock *BB) {
   return NewBBs;
 }
 
+// Finds the original instruction of I in iteration Iteration if there is any.
+// It checks equality of instructions by comparing their pointers.
 const Instruction *ScalarInterpolation::getInstInOriginalBB(unsigned Iteration,
                                                             Instruction *I) {
+  //  TODO: change the way you check if two instructions are the same
   for (auto Pair : LastValueMaps[Iteration]) {
-    if (Pair.second->getName().equals(I->getName())) {
+    if (Pair.second == I) {
       return dyn_cast<Instruction>(Pair.first);
     }
   }
   return nullptr;
 }
+
+#ifndef NDEBUG
+void ScalarInterpolation::printValueMap() {
+  for (unsigned It = 0; It < SICount; ++It) {
+    for (auto pair : LastValueMaps[It]) {
+      errs() << "Pair: " << *pair.first << " -> " << *pair.second << "\n";
+    }
+  }
+}
+#endif
 
 SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
     BasicBlock *InputBasicBlock, VPBuilder Builder,
@@ -175,9 +182,18 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
         continue;
       }
       // Otherwise, add the new recipe.
+
       VPRecipeBase *Recipe = cast<VPRecipeBase *>(RecipeOrValue);
+      errs() << "Instruction: " << *Instr << "\n";
+      errs() << "Recipe:\n ";
+      Recipe->dump();
+      errs() << "\n";
       for (auto *Def : Recipe->definedValues()) {
         auto *UV = Def->getUnderlyingValue();
+        errs() << "Value and VPValue in Recipe\n";
+        errs() << "Def: " << *Def << "\n";
+        errs() << "UV: " << *UV << "\n";
+        errs() << "\n";
         Plan.addVPValue(UV, Def);
       }
 
@@ -188,16 +204,17 @@ SmallVector<VPBasicBlock *> ScalarInterpolation::generateVectorBasicBlocks(
   }
   return VPBBs;
 }
+
 Instruction *ScalarInterpolation::getInstInOriginalBB(Instruction *I) {
-  const Instruction* OriginalInst = nullptr;
+  const Instruction *OriginalInst = nullptr;
   for (unsigned It = 0; It < SICount; ++It) {
     OriginalInst = getInstInOriginalBB(It, I);
     if (OriginalInst)
       break;
   }
-  errs() << "CurrentInst:  " << *I << "\n";
+//  errs() << "CurrentInst:  " << *I << "\n";
   if (!OriginalInst)
     return nullptr;
-  errs() << "OriginalInst: " << *OriginalInst << "\n";
-  return const_cast<Instruction*>(OriginalInst);
+//  errs() << "OriginalInst: " << *OriginalInst << "\n";
+  return const_cast<Instruction *>(OriginalInst);
 }
