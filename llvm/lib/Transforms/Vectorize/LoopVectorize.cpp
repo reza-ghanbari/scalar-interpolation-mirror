@@ -8822,7 +8822,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   SmallPtrSet<const InterleaveGroup<Instruction> *, 1> InterleaveGroups;
 
   VPRecipeBuilder RecipeBuilder(OrigLoop, TLI, Legal, CM, PSE, Builder);
-  assert(PSE.getSE() && "HEY! Expected Scalar Evolution to be initialized");
+  assert(PSE.getSE() && "Expected Scalar Evolution to be initialized");
   // ---------------------------------------------------------------------------
   // Pre-construction: record ingredients whose recipes we'll need to further
   // process after constructing the initial VPlan.
@@ -8944,9 +8944,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
           Legal->isInvariantAddressOfReduction(SI->getPointerOperand()))
         continue;
       auto RecipeOrValue = RecipeBuilder.tryToCreateWidenRecipe(Instr, Operands, Range, VPBB, Plan);
-      SmallVector<VPValue *, 4> SIInstructions;
 
-      // TODO-SI: add condition for SI count to add replications
       if (!RecipeOrValue)
         RecipeOrValue = RecipeBuilder.handleReplication(Instr, Range, *Plan);
       // If Instr can be simplified to an existing VPValue, use it.
@@ -8975,13 +8973,14 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
         Recipe->insertBefore(*HeaderVPBB, HeaderVPBB->getFirstNonPhi());
       } else
         VPBB->appendRecipe(Recipe);
-    }
 
-    if (UserSI)
-      for (auto ScalarVPBB: SInterpolation->generateVectorBasicBlocks(BB, Builder, DeadInstructions, *Plan, RecipeBuilder, Legal, Range)) {
-        VPBlockUtils::insertBlockAfter(ScalarVPBB, VPBB);
-        VPBB = cast<VPBasicBlock>(VPBB->getSingleSuccessor());
+      if (UserSI) {
+        if (Phi && Phi->getParent() == OrigLoop->getHeader())
+          continue;
+        auto *SIRecipe = new VPInterpolateRecipe(Instr, Recipe->operands());
+        VPBB->appendRecipe(SIRecipe);
       }
+    }
 
     VPBlockUtils::insertBlockAfter(new VPBasicBlock(), VPBB);
     VPBB = cast<VPBasicBlock>(VPBB->getSingleSuccessor());

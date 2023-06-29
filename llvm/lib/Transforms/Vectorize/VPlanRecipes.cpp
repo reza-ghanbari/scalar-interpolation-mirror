@@ -1366,3 +1366,39 @@ void VPActiveLaneMaskPHIRecipe::print(raw_ostream &O, const Twine &Indent,
   printOperands(O, SlotTracker);
 }
 #endif
+
+void VPInterpolateRecipe::execute(VPTransformState &State) {
+  errs() << "\nVPInterpolateRecipe: Not implemented yet!\n";
+  auto *I = cast<Instruction>(this->getUnderlyingInstr());
+  errs() << "UV: \n";
+  I->print(errs());
+  errs() << "\n";
+}
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+void VPInterpolateRecipe::print(raw_ostream &O, const Twine &Indent,
+                              VPSlotTracker &SlotTracker) const {
+  O << Indent << "INTERPOLATE ";
+
+  const auto &Operands = operands();
+  const auto *const OpsBegin = Operands.begin();
+  const auto *const OpsEnd = Operands.end();
+
+  if (!getUnderlyingInstr()->getType()->isVoidTy()) {
+    printAsOperand(O, SlotTracker);
+    O << " = ";
+  }
+
+  if (auto *CB = dyn_cast<CallBase>(getUnderlyingInstr())) {
+    O << "call @" << CB->getCalledFunction()->getName() << "(";
+    interleaveComma(make_range(OpsBegin,  OpsEnd),
+                    O, [&O, &SlotTracker](VPValue *Op) {
+                      Op->printAsOperand(O, SlotTracker);
+                    });
+    O << ")";
+  } else {
+    O << Instruction::getOpcodeName(getUnderlyingInstr()->getOpcode()) << " ";
+    printOperands(O, SlotTracker);
+  }
+}
+#endif

@@ -59,6 +59,7 @@ class VPBasicBlock;
 class VPRegionBlock;
 class VPlan;
 class VPReplicateRecipe;
+class VPInterpolateRecipe;
 class VPlanSlp;
 class Value;
 class LoopVersioning;
@@ -1310,6 +1311,26 @@ public:
   virtual VPRecipeBase &getBackedgeRecipe() {
     return *getBackedgeValue()->getDefiningRecipe();
   }
+};
+
+class VPInterpolateRecipe : public VPRecipeWithIRFlags, public VPValue {
+public:
+  template <typename IterT>
+  VPInterpolateRecipe(Instruction *I, iterator_range<IterT> Operands)
+      : VPRecipeWithIRFlags(VPDef::VPInterpolateSC, Operands), VPValue(this, I) {
+  }
+
+  ~VPInterpolateRecipe() override = default;
+
+  VP_CLASSOF_IMPL(VPDef::VPInterpolateSC)
+
+  void execute(VPTransformState &State) override;
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+  /// Print the recipe.
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
+#endif
 };
 
 /// A recipe for handling phi nodes of integer and floating-point inductions,
