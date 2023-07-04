@@ -258,6 +258,8 @@ struct VPTransformState {
 
     using ScalarsPerPartValuesTy = SmallVector<SmallVector<Value *, 4>, 2>;
     DenseMap<VPValue *, ScalarsPerPartValuesTy> PerPartScalars;
+
+    DenseMap<VPValue *, Value *> InterpolatedScalars;
   } Data;
 
   /// Get the generated Value for a given VPValue and a given Part. Note that
@@ -266,6 +268,8 @@ struct VPTransformState {
   /// callers a consistent API.
   /// \see set.
   Value *get(VPValue *Def, unsigned Part);
+
+  Value *getInterpolateValue(VPValue *Def);
 
   /// Get the generated Value for a given VPValue and given Part and Lane.
   Value *get(VPValue *Def, const VPIteration &Instance);
@@ -288,6 +292,12 @@ struct VPTransformState {
     return Instance.Part < I->second.size() &&
            CacheIdx < I->second[Instance.Part].size() &&
            I->second[Instance.Part][CacheIdx];
+  }
+
+  void setInterpolate(VPValue *Def, Value *V) {
+    if (!Data.InterpolatedScalars.count(Def)) {
+      Data.InterpolatedScalars[Def] = V;
+    }
   }
 
   /// Set the generated Value for a given VPValue and a given Part.

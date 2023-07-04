@@ -1367,13 +1367,6 @@ void VPActiveLaneMaskPHIRecipe::print(raw_ostream &O, const Twine &Indent,
 }
 #endif
 
-void VPInterpolateRecipe::execute(VPTransformState &State) {
-  errs() << "\nVPInterpolateRecipe: Not implemented yet!\n";
-  auto *I = cast<Instruction>(this->getUnderlyingInstr());
-  errs() << "UV: \n";
-  I->print(errs());
-  errs() << "\n";
-}
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void VPInterpolateRecipe::print(raw_ostream &O, const Twine &Indent,
