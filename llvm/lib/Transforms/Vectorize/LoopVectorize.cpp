@@ -528,7 +528,6 @@ public:
 
   void interpolateInstruction(const Instruction *Instr,
                             VPInterpolateRecipe *SIRecipe,
-                            unsigned SICount,
                             VPTransformState &State);
 
   /// Construct the vector value of a scalarized value \p V one lane at a time.
@@ -2789,7 +2788,6 @@ void InnerLoopVectorizer::vectorizeInterleaveGroup(
 //2. check if you need to keep interpolated instructions into a separate map in State or not
 void InnerLoopVectorizer::interpolateInstruction(const Instruction *Instr,
                                                VPInterpolateRecipe *SIRecipe,
-                                               unsigned SICount,
                                                VPTransformState &State) {
   assert(!Instr->getType()->isAggregateType() && "Can't handle vectors");
 
@@ -9031,9 +9029,13 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
         VPBB->appendRecipe(Recipe);
 
       if (UserSI) {
+        SmallVector<VPValue *, 4> SIOperands;
         if (Phi && Phi->getParent() == OrigLoop->getHeader())
           continue;
-        auto *SIRecipe = new VPInterpolateRecipe(Instr, Recipe->operands());
+        auto OpRange = Plan->mapToInterpolatedVPValues(Instr->operands());
+        SIOperands = {OpRange.begin(), OpRange.end()};
+        auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
+        Plan->addInterpolatedVPValue(Instr, SIRecipe);
         VPBB->appendRecipe(SIRecipe);
       }
     }
@@ -9596,18 +9598,6 @@ void VPReductionRecipe::execute(VPTransformState &State) {
 }
 
 void VPInterpolateRecipe::execute(VPTransformState &State) {
-  errs() << "======================\n";
-  errs() << "\nVPInterpolateRecipe: Not implemented yet!\n";
-  auto *I = cast<Instruction>(this->getUnderlyingInstr());
-  for (auto op: operands()) {
-    errs() << "Operand: " << op->getVPValueID() << "\n";
-    op->dump();
-    errs() << "\n";
-  }
-  errs() << "UV: \n";
-  I->print(errs());
-  errs() << "\n";
-  errs() << "======================\n";
   Instruction *UI = getUnderlyingInstr();
 //  todo-si: check if you need this if
 //  if (State.Instance) { // Generate a single instance.
@@ -9650,11 +9640,7 @@ void VPInterpolateRecipe::execute(VPTransformState &State) {
 //    return;
 //  }
 
-  // Generate scalar instances for all VF lanes of all UF parts.
-  assert(!State.VF.isScalable() && "Can't scalarize a scalable vector");
-  const unsigned EndLane = State.VF.getKnownMinValue();
-  for (unsigned It = 0; It < 1; ++It)
-    State.ILV->interpolateInstruction(UI, this, It, State);
+  State.ILV->interpolateInstruction(UI, this, State);
 }
 
 void VPReplicateRecipe::execute(VPTransformState &State) {
@@ -9896,16 +9882,14 @@ static ScalarEpilogueLowering getScalarEpilogueLowering(
 }
 
 Value *VPTransformState::getInterpolateValue(VPValue *Def) {
-  if (Data.InterpolatedScalars.count(Def) == 0) {
-    errs() << "=======================\n";
-    errs() << Def->getUnderlyingValue()->getName() << "\n";
-    Def->getUnderlyingValue()->dump();
-    errs() << "=======================\n";
-  }
+  if (Data.InterpolatedScalars.contains(Def))
+    return Data.InterpolatedScalars[Def];
   if (Def->isLiveIn())
     return Def->getLiveInIRValue();
-  assert(Data.InterpolatedScalars.contains(Def));
-  return Data.InterpolatedScalars[Def];
+//  todo-si: the following code is just for checking if the rest of implementation is correct, and must be removed ASAP
+  if (hasAnyVectorValue(Def))
+    return get(Def, VPIteration(0, 0));
+  assert(false && "Interpolated value not found");
 }
 
 Value *VPTransformState::get(VPValue *Def, unsigned Part) {

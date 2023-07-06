@@ -2458,6 +2458,8 @@ class VPlan {
   /// VPlan.
   Value2VPValueTy Value2VPValue;
 
+  Value2VPValueTy InterpolatedValue2VPValue;
+
   /// Contains all the external definitions created for this VPlan. External
   /// definitions are VPValues that hold a pointer to their underlying IR.
   SmallVector<VPValue *, 16> VPLiveInsToFree;
@@ -2568,6 +2570,10 @@ public:
     Value2VPValue[V] = VPV;
   }
 
+  void addInterpolatedVPValue(Value* V, VPValue* VPV) {
+    InterpolatedValue2VPValue[V] = VPV;
+  }
+
   /// Returns the VPValue for \p V. \p OverrideAllowed can be used to disable
   ///   /// checking whether it is safe to query VPValues using IR Values.
   VPValue *getVPValue(Value *V, bool OverrideAllowed = false) {
@@ -2577,6 +2583,12 @@ public:
             Value2VPValue[V]->isLiveIn()) &&
            "Value2VPValue mapping may be out of date!");
     return Value2VPValue[V];
+  }
+
+  VPValue* getInterpolatedVPValue(Value* V) {
+    assert(V && "Trying to get the VPValue of a null Value");
+    assert(InterpolatedValue2VPValue.count(V) && "Value does not exist in VPlan");
+    return InterpolatedValue2VPValue[V];
   }
 
   /// Gets the VPValue for \p V or adds a new live-in (if none exists yet) for
@@ -2590,6 +2602,16 @@ public:
     }
 
     return getVPValue(V);
+  }
+
+  VPValue *getInterpolatedVPValueOrAddLiveIn(Value* V) {
+    assert(V && "Trying to get or add the VPValue of a null Value");
+    if (!InterpolatedValue2VPValue.count(V)) {
+      VPValue* VPV = new VPValue(V);
+//      VPLiveInsToFree.push_back(VPV);
+      addInterpolatedVPValue(V, VPV);
+    }
+    return getInterpolatedVPValue(V);
   }
 
   void removeVPValueFor(Value *V) {
@@ -2615,6 +2637,14 @@ public:
   mapToVPValues(User::op_range Operands) {
     std::function<VPValue *(Value *)> Fn = [this](Value *Op) {
       return getVPValueOrAddLiveIn(Op);
+    };
+    return map_range(Operands, Fn);
+  }
+
+  iterator_range<mapped_iterator<Use *, std::function<VPValue *(Value *)>>>
+  mapToInterpolatedVPValues(User::op_range Operands) {
+    std::function<VPValue *(Value *)> Fn = [this](Value *Op) {
+      return getInterpolatedVPValueOrAddLiveIn(Op);
     };
     return map_range(Operands, Fn);
   }
