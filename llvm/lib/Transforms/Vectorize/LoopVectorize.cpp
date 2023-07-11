@@ -9028,16 +9028,17 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
       } else
         VPBB->appendRecipe(Recipe);
 
-      if (UserSI) {
-        SmallVector<VPValue *, 4> SIOperands;
-        if (Phi && Phi->getParent() == OrigLoop->getHeader())
-          continue;
-        auto OpRange = Plan->mapToInterpolatedVPValues(Instr->operands());
-        SIOperands = {OpRange.begin(), OpRange.end()};
-        auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
-        Plan->addInterpolatedVPValue(Instr, SIRecipe);
-        VPBB->appendRecipe(SIRecipe);
-      }
+//      if (UserSI) {
+//        SmallVector<VPValue *, 4> SIOperands;
+//        if (Phi && Phi->getParent() == OrigLoop->getHeader())
+//          continue;
+//        for (unsigned Index = 0; Index < UserSI; ++Index) {
+//          SIOperands = Plan->mapToInterpolatedVPValues(Instr->operands(), Index);
+//          auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
+//          Plan->addInterpolatedVPValue(Instr, SIRecipe);
+//          VPBB->appendRecipe(SIRecipe);
+//        }
+//      }
     }
 
     VPBlockUtils::insertBlockAfter(new VPBasicBlock(), VPBB);
@@ -9119,6 +9120,42 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
 
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
   VPlanTransforms::removeDeadRecipes(*Plan);
+  //  todo-si: implement a VPlanTransform
+  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
+      Plan->getEntry());
+
+  for (VPBasicBlock *SIVPBB : reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
+    // The recipes in the block are processed in reverse order, to catch chains
+    // of dead recipes.
+    for (VPRecipeBase &R : *SIVPBB) {
+      Instruction* Instr = nullptr;
+      if (isa<VPWidenMemoryInstructionRecipe>(R)) {
+        auto *WidenMemInstr = cast<VPWidenMemoryInstructionRecipe>(&R);
+        if (WidenMemInstr->isStore()) {
+          Instr = &WidenMemInstr->getIngredient();
+        }
+      }
+      if (!Instr) {
+        if (R.definedValues().empty() || !R.getVPValue(0)->getUnderlyingValue())
+          continue;
+        Instr = R.getUnderlyingInstr();
+      }
+      auto *Phi = dyn_cast<PHINode>(Instr);
+      if (UserSI) {
+        SmallVector<VPValue *, 4> SIOperands;
+        if (Phi && Phi->getParent() == OrigLoop->getHeader())
+          continue;
+        for (unsigned Index = 0; Index < UserSI; ++Index) {
+          SIOperands = Plan->mapToInterpolatedVPValues(Instr->operands(), Index);
+          auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
+          SIRecipe->insertBefore(&R);
+          Plan->addInterpolatedVPValue(Instr, SIRecipe);
+        }
+      }
+    }
+  }
+  errs() << "SI: Here is the induction variable recipe:\n\t";
+  Plan->getCanonicalIV()->llvm::VPDef::dump();
 
   VPlanTransforms::createAndOptimizeReplicateRegions(*Plan);
 

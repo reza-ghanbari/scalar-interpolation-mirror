@@ -2458,7 +2458,7 @@ class VPlan {
   /// VPlan.
   Value2VPValueTy Value2VPValue;
 
-  Value2VPValueTy InterpolatedValue2VPValue;
+  DenseMap<Value *, SmallVector<VPValue *>> InterpolatedValue2VPValue;
 
   /// Contains all the external definitions created for this VPlan. External
   /// definitions are VPValues that hold a pointer to their underlying IR.
@@ -2571,7 +2571,13 @@ public:
   }
 
   void addInterpolatedVPValue(Value* V, VPValue* VPV) {
-    InterpolatedValue2VPValue[V] = VPV;
+    InterpolatedValue2VPValue[V].push_back(VPV);
+  }
+
+  void setInterpolatedVPValue(Value* V, VPValue* VPV, unsigned Index) {
+    assert(V && "Trying to add a null Value to VPlan");
+    assert(Index < InterpolatedValue2VPValue[V].size() && "Index out of bounds");
+    InterpolatedValue2VPValue[V][Index] = VPV;
   }
 
   /// Returns the VPValue for \p V. \p OverrideAllowed can be used to disable
@@ -2585,10 +2591,10 @@ public:
     return Value2VPValue[V];
   }
 
-  VPValue* getInterpolatedVPValue(Value* V) {
+  VPValue* getInterpolatedVPValue(Value* V, unsigned Index) {
     assert(V && "Trying to get the VPValue of a null Value");
     assert(InterpolatedValue2VPValue.count(V) && "Value does not exist in VPlan");
-    return InterpolatedValue2VPValue[V];
+    return InterpolatedValue2VPValue[V][Index];
   }
 
   /// Gets the VPValue for \p V or adds a new live-in (if none exists yet) for
@@ -2604,14 +2610,14 @@ public:
     return getVPValue(V);
   }
 
-  VPValue *getInterpolatedVPValueOrAddLiveIn(Value* V) {
+  VPValue *getInterpolatedVPValueOrAddLiveIn(Value* V, unsigned SIIndex) {
     assert(V && "Trying to get or add the VPValue of a null Value");
-    if (!InterpolatedValue2VPValue.count(V)) {
+    if (InterpolatedValue2VPValue.count(V) >= SIIndex) {
       VPValue* VPV = new VPValue(V);
 //      VPLiveInsToFree.push_back(VPV);
       addInterpolatedVPValue(V, VPV);
     }
-    return getInterpolatedVPValue(V);
+    return getInterpolatedVPValue(V, SIIndex);
   }
 
   void removeVPValueFor(Value *V) {
@@ -2641,12 +2647,13 @@ public:
     return map_range(Operands, Fn);
   }
 
-  iterator_range<mapped_iterator<Use *, std::function<VPValue *(Value *)>>>
-  mapToInterpolatedVPValues(User::op_range Operands) {
-    std::function<VPValue *(Value *)> Fn = [this](Value *Op) {
-      return getInterpolatedVPValueOrAddLiveIn(Op);
-    };
-    return map_range(Operands, Fn);
+  SmallVector<VPValue *>
+  mapToInterpolatedVPValues(User::op_range Operands, unsigned SIIndex) {
+    SmallVector<VPValue *, 4> SIOperands;
+    for (auto Op = Operands.begin(); Op != Operands.end(); ++Op) {
+      SIOperands.push_back(getInterpolatedVPValueOrAddLiveIn(*Op, SIIndex));
+    }
+    return SIOperands;
   }
 
   /// Returns the VPRegionBlock of the vector loop.
