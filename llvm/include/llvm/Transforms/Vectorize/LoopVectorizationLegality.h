@@ -154,7 +154,7 @@ public:
     return 0;
   }
   unsigned getScalarInterpolation() const {
-    return (ScalarInterpolation.Value) ? ScalarInterpolation.Value : 1; //todo-si: change the default to 0
+    return (ScalarInterpolation.Value) ? ScalarInterpolation.Value : 2; //todo-si: change the default to 0
   }
   unsigned getIsVectorized() const { return IsVectorized.Value; }
   unsigned getPredicate() const { return Predicate.Value; }

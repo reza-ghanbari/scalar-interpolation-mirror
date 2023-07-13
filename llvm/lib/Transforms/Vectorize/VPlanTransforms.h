@@ -86,6 +86,8 @@ struct VPlanTransforms {
   static void optimizeForVFAndUF(VPlan &Plan, ElementCount BestVF,
                                  unsigned BestUF,
                                  PredicatedScalarEvolution &PSE);
+
+  static void applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned UserSI);
 };
 
 } // namespace llvm
