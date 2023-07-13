@@ -75,7 +75,6 @@ class ProfileSummaryInfo;
 class ScalarEvolution;
 class TargetLibraryInfo;
 class TargetTransformInfo;
-class ScalarInterpolation;
 
 extern cl::opt<bool> EnableLoopInterleaving;
 extern cl::opt<bool> EnableLoopVectorization;
@@ -182,7 +181,6 @@ public:
   LoopAccessInfoManager *LAIs;
   OptimizationRemarkEmitter *ORE;
   ProfileSummaryInfo *PSI;
-  ScalarInterpolation* scalarInterpolation;
 
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
   void printPipeline(raw_ostream &OS,

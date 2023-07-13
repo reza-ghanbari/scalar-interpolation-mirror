@@ -57,7 +57,6 @@
 #include "LoopVectorizationPlanner.h"
 #include "VPRecipeBuilder.h"
 #include "VPlan.h"
-#include "ScalarInterpolation.h"
 #include "VPlanHCFGBuilder.h"
 #include "VPlanTransforms.h"
 #include "llvm/ADT/APInt.h"
@@ -8953,12 +8952,6 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
                         CM.getTailFoldingStyle(IVUpdateMayOverflow));
 
   unsigned int UserSI = Hints.getScalarInterpolation();
-  //  todo-si: check legality of scalar interpolation here
-  if (UserSI) {
-    SInterpolation->setSICount(UserSI);
-    SInterpolation->initializeSIDataStructures(OrigLoop);
-  }
-
   // Scan the body of the loop in a topological order to visit each basic block
   // after having visited its predecessor basic blocks.
   LoopBlocksDFS DFS(OrigLoop);
@@ -10331,10 +10324,9 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   // Use the cost model.
   LoopVectorizationCostModel CM(SEL, L, PSE, LI, &LVL, *TTI, TLI, DB, AC, ORE,
                                 F, &Hints, IAI);
-  scalarInterpolation->setCM(&CM);
   // Use the planner for vectorization.
   LoopVectorizationPlanner LVP(L, LI, TLI, *TTI, &LVL, CM, IAI, PSE, Hints,
-                               ORE, scalarInterpolation);
+                               ORE);
 
   // Get user vectorization factor and interleave count.
   ElementCount UserVF = Hints.getWidth();
@@ -10637,7 +10629,6 @@ LoopVectorizeResult LoopVectorizePass::runImpl(
   DB = &DB_;
   ORE = &ORE_;
   PSI = PSI_;
-  scalarInterpolation = new ScalarInterpolation(SE, LI, TTI, DT, AC, ORE);
   // Don't attempt if
   // 1. the target claims to have no vector registers, and
   // 2. interleaving won't help ILP.
@@ -10757,41 +10748,4 @@ void LoopVectorizePass::printPipeline(
   OS << (InterleaveOnlyWhenForced ? "" : "no-") << "interleave-forced-only;";
   OS << (VectorizeOnlyWhenForced ? "" : "no-") << "vectorize-forced-only;";
   OS << '>';
-}
-
-VPRecipeOrVPValueTy
-ScalarInterpolation::handleReplication(VPRecipeBuilder RecipeBuilder,
-                                       Instruction *I, VFRange &Range,
-                                       VPlan &Plan) {
-  assert(CM && "Cost model is not initialized!");
-  Instruction* OrigI = getInstInOriginalBB(I);
-  assert(OrigI && "Original instruction not found!");
-  bool IsUniform = LoopVectorizationPlanner::getDecisionAndClampRange(
-      [&](ElementCount VF) { return CM->isUniformAfterVectorization(OrigI, VF); },
-      Range);
-
-  bool IsPredicated = CM->isPredicatedInst(OrigI);
-
-  if (!IsUniform && Range.Start.isScalable() && isa<IntrinsicInst>(I)) {
-    switch (cast<IntrinsicInst>(I)->getIntrinsicID()) {
-    case Intrinsic::assume:
-    case Intrinsic::lifetime_start:
-    case Intrinsic::lifetime_end:
-      IsUniform = true;
-      break;
-    default:
-      break;
-    }
-  }
-  VPValue *BlockInMask = nullptr;
-  if (!IsPredicated) {
-    LLVM_DEBUG(dbgs() << "LV: Scalarizing:" << *I << "\n");
-  } else {
-    LLVM_DEBUG(dbgs() << "LV: Scalarizing and predicating:" << *I << "\n");
-    BlockInMask = RecipeBuilder.createBlockInMask(I->getParent(), Plan);
-  }
-
-  auto *Recipe = new VPReplicateRecipe(I, Plan.mapToVPValues(I->operands()),
-                                       IsUniform, BlockInMask);
-  return Recipe;
 }

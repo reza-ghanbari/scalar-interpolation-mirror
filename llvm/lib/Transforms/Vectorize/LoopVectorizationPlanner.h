@@ -25,7 +25,6 @@
 #define LLVM_TRANSFORMS_VECTORIZE_LOOPVECTORIZATIONPLANNER_H
 
 #include "VPlan.h"
-#include "ScalarInterpolation.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/InstructionCost.h"
 
@@ -40,7 +39,6 @@ class OptimizationRemarkEmitter;
 class TargetTransformInfo;
 class TargetLibraryInfo;
 class VPRecipeBuilder;
-class ScalarInterpolation;
 
 /// VPlan-based builder utility analogous to IRBuilder.
 class VPBuilder {
@@ -291,8 +289,6 @@ class LoopVectorizationPlanner {
 
   OptimizationRemarkEmitter *ORE;
 
-  ScalarInterpolation* SInterpolation;
-
   SmallVector<VPlanPtr, 4> VPlans;
 
   /// Profitable vector factors.
@@ -309,10 +305,9 @@ public:
                            InterleavedAccessInfo &IAI,
                            PredicatedScalarEvolution &PSE,
                            const LoopVectorizeHints &Hints,
-                           OptimizationRemarkEmitter *ORE,
-                           ScalarInterpolation* Interpolation = nullptr)
+                           OptimizationRemarkEmitter *ORE)
       : OrigLoop(L), LI(LI), TLI(TLI), TTI(TTI), Legal(Legal), CM(CM), IAI(IAI),
-        PSE(PSE), Hints(Hints), ORE(ORE), SInterpolation(Interpolation) {}
+        PSE(PSE), Hints(Hints), ORE(ORE) {}
 
   /// Plan how to best vectorize, return the best VF and its cost, or
   /// std::nullopt if vectorization and interleaving should be avoided up front.
