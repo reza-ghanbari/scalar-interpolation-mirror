@@ -782,7 +782,7 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned U
   for (VPBasicBlock *SIVPBB : reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
     // The recipes in the block are processed in reverse order, to catch chains
     // of dead recipes.
-    for (VPRecipeBase &R : *SIVPBB) {
+    for (VPRecipeBase &R : reverse(*SIVPBB)) {
       Instruction *Instr = getUnderlyingInstructionOfRecipe(R);
       if (!Instr)
         continue;
@@ -794,7 +794,7 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned U
         for (unsigned Index = 0; Index < UserSI; ++Index) {
           SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
           auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
-          SIRecipe->insertBefore(&R);
+          SIRecipe->insertAfter(&R);
           Plan.addInterpolatedVPValue(Instr, SIRecipe);
         }
       }

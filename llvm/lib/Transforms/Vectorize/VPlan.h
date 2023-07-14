@@ -1324,6 +1324,14 @@ public:
 };
 
 class VPInterpolateRecipe : public VPRecipeWithIRFlags, public VPValue {
+private:
+  /// Returns true if the recipe uses scalars of operand \p Op.
+  bool usesScalars(const VPValue *Op) const override {
+    assert(is_contained(operands(), Op) &&
+           "Op must be an operand of the recipe");
+    return true;
+  }
+
 public:
   template <typename IterT>
   VPInterpolateRecipe(Instruction *I, iterator_range<IterT> Operands)
