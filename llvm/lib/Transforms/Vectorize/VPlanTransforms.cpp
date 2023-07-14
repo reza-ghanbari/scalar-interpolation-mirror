@@ -744,9 +744,7 @@ bool VPlanTransforms::adjustFixedOrderRecurrences(VPlan &Plan,
   return true;
 }
 
-void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned UserSI) {
-  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
-      Plan.getEntry());
+VPWidenIntOrFpInductionRecipe *getWidenInductionVariable(VPlan &Plan) {
   VPBasicBlock *HeaderVPBB = Plan.getVectorLoopRegion()->getEntryBasicBlock();
   VPWidenIntOrFpInductionRecipe *WideIV = nullptr;
   for (VPRecipeBase &Phi : HeaderVPBB->phis()) {
@@ -754,6 +752,29 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned U
     if (!WideIV)
       continue;
   }
+  return WideIV;
+}
+
+Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R) {
+  Instruction* Instr = nullptr;
+  if (isa<VPWidenMemoryInstructionRecipe>(R)) {
+    auto *WidenMemInstr = cast<VPWidenMemoryInstructionRecipe>(&R);
+    if (WidenMemInstr->isStore()) {
+      Instr = &WidenMemInstr->getIngredient();
+    }
+  }
+  if (!Instr) {
+    if (R.definedValues().empty() || !R.getVPValue(0)->getUnderlyingValue())
+      return nullptr;
+    Instr = R.getUnderlyingInstr();
+  }
+  return Instr;
+}
+
+void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned UserSI) {
+  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
+      Plan.getEntry());
+  auto* WideIV = getWidenInductionVariable(Plan);
   assert(WideIV && "No wide induction variable found");
   for (unsigned It = 0; It < UserSI; ++It) {
     Plan.addInterpolatedVPValue(WideIV->getUnderlyingValue(), WideIV);
@@ -762,18 +783,9 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned U
     // The recipes in the block are processed in reverse order, to catch chains
     // of dead recipes.
     for (VPRecipeBase &R : *SIVPBB) {
-      Instruction* Instr = nullptr;
-      if (isa<VPWidenMemoryInstructionRecipe>(R)) {
-        auto *WidenMemInstr = cast<VPWidenMemoryInstructionRecipe>(&R);
-        if (WidenMemInstr->isStore()) {
-          Instr = &WidenMemInstr->getIngredient();
-        }
-      }
-      if (!Instr) {
-        if (R.definedValues().empty() || !R.getVPValue(0)->getUnderlyingValue())
-          continue;
-        Instr = R.getUnderlyingInstr();
-      }
+      Instruction *Instr = getUnderlyingInstructionOfRecipe(R);
+      if (!Instr)
+        continue;
       auto *Phi = dyn_cast<PHINode>(Instr);
       if (UserSI) {
         SmallVector<VPValue *, 4> SIOperands;
@@ -784,7 +796,6 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned U
           auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
           SIRecipe->insertBefore(&R);
           Plan.addInterpolatedVPValue(Instr, SIRecipe);
-//          Plan.addInterpolatedVPValue(Instr, SIRecipe);
         }
       }
     }
