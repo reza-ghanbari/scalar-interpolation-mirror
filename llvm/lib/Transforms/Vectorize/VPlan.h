@@ -2605,6 +2605,10 @@ public:
     return InterpolatedValue2VPValue[V][Index];
   }
 
+  bool hasInterpolatedValue(Value* V) {
+    return InterpolatedValue2VPValue.count(V);
+  }
+
   /// Gets the VPValue for \p V or adds a new live-in (if none exists yet) for
   /// \p V.
   VPValue *getVPValueOrAddLiveIn(Value *V) {
@@ -2658,7 +2662,7 @@ public:
   SmallVector<VPValue *>
   mapToInterpolatedVPValues(User::op_range Operands, unsigned SIIndex) {
     SmallVector<VPValue *, 4> SIOperands;
-    for (auto Op = Operands.begin(); Op != Operands.end(); ++Op) {
+    for (auto* Op = Operands.begin(); Op != Operands.end(); ++Op) {
       SIOperands.push_back(getInterpolatedVPValueOrAddLiveIn(*Op, SIIndex));
     }
     return SIOperands;
