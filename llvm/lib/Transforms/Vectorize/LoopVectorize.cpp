@@ -9882,10 +9882,15 @@ Value *VPTransformState::getInterpolateValue(VPValue *Def) {
     return Data.InterpolatedScalars[Def];
   if (Def->isLiveIn())
     return Def->getLiveInIRValue();
-//  todo-si: the following code is just for checking if the rest of implementation is correct, and must be removed ASAP
-  if (hasAnyVectorValue(Def))
-    return get(Def, VPIteration(0, 0));
-  assert(false && "Interpolated value not found");
+  unsigned Part = UF - 1;
+  unsigned Lane = VF.getKnownMinValue() - 1;
+  if (Instance) {
+    Part = Instance->Part;
+    Lane = Instance->Lane.getKnownLane();
+  }
+  if (hasScalarValue(Def, VPIteration(Part, Lane)))
+    return get(Def, VPIteration(Part, Lane));
+  assert(false && "Interpolated value is either using a vector or does not exist");
 }
 
 Value *VPTransformState::get(VPValue *Def, unsigned Part) {

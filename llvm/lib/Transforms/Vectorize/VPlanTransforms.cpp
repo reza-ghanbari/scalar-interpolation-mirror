@@ -793,7 +793,6 @@ VPRecipeBase* insertAdditionForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase 
           SIOperands.push_back(new VPValue(ConstantAddedValue));
           auto *TempAddRecipe =
               new VPInterpolateRecipe(TempAdd, make_range(SIOperands.begin(), SIOperands.end()));
-          TempAddRecipe->llvm::VPDef::dump();
           Plan.addInterpolatedVPValue(TempAdd, TempAddRecipe);
           Plan.addInterpolatedVPValue(WideIVUnderlyingValue, TempAddRecipe);
           TempAddRecipe->insertAfter(InsertionPoint);
@@ -809,7 +808,6 @@ VPRecipeBase* insertAdditionForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase 
 
 void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
                                          unsigned UserSI) {
-  errs() << "Applying Interpolation\n";
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   VPRecipeBase* InsertionPoint;
@@ -848,7 +846,4 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
 
     }
   }
-  errs() << "Finished applying Interpolation\n";
-  errs() << "Printing Plan after applying Interpolation\n";
-  Plan.dump();
 }
