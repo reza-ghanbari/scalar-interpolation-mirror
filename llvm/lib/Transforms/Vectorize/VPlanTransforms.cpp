@@ -12,9 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "VPlanTransforms.h"
-#include "VPlanDominatorTree.h"
 #include "VPRecipeBuilder.h"
 #include "VPlanCFG.h"
+#include "VPlanDominatorTree.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Analysis/IVDescriptors.h"
@@ -475,7 +475,8 @@ void VPlanTransforms::removeDeadRecipes(VPlan &Plan) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
 
-  for (VPBasicBlock *VPBB : reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
+  for (VPBasicBlock *VPBB :
+       reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
     // The recipes in the block are processed in reverse order, to catch chains
     // of dead recipes.
     for (VPRecipeBase &R : make_early_inc_range(reverse(*VPBB))) {
@@ -744,9 +745,7 @@ bool VPlanTransforms::adjustFixedOrderRecurrences(VPlan &Plan,
   return true;
 }
 
-void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned UserSI) {
-  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
-      Plan.getEntry());
+VPWidenIntOrFpInductionRecipe *getWidenInductionVariable(VPlan &Plan) {
   VPBasicBlock *HeaderVPBB = Plan.getVectorLoopRegion()->getEntryBasicBlock();
   VPWidenIntOrFpInductionRecipe *WideIV = nullptr;
   for (VPRecipeBase &Phi : HeaderVPBB->phis()) {
@@ -754,39 +753,97 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned U
     if (!WideIV)
       continue;
   }
-  assert(WideIV && "No wide induction variable found");
-  for (unsigned It = 0; It < UserSI; ++It) {
-    Plan.addInterpolatedVPValue(WideIV->getUnderlyingValue(), WideIV);
+  return WideIV;
+}
+
+Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R) {
+  Instruction *Instr = nullptr;
+  if (isa<VPWidenMemoryInstructionRecipe>(R)) {
+    auto *WidenMemInstr = cast<VPWidenMemoryInstructionRecipe>(&R);
+    if (WidenMemInstr->isStore()) {
+      Instr = &WidenMemInstr->getIngredient();
+    }
   }
-  for (VPBasicBlock *SIVPBB : reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
-    // The recipes in the block are processed in reverse order, to catch chains
-    // of dead recipes.
-    for (VPRecipeBase &R : *SIVPBB) {
-      Instruction* Instr = nullptr;
-      if (isa<VPWidenMemoryInstructionRecipe>(R)) {
-        auto *WidenMemInstr = cast<VPWidenMemoryInstructionRecipe>(&R);
-        if (WidenMemInstr->isStore()) {
-          Instr = &WidenMemInstr->getIngredient();
+  if (!Instr) {
+    if (R.definedValues().empty() || !R.getVPValue(0)->getUnderlyingValue())
+      return nullptr;
+    Instr = R.getUnderlyingInstr();
+  }
+  return Instr;
+}
+
+VPRecipeBase* insertAdditionForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R, unsigned UserSI) {
+  auto *WideIV = getWidenInductionVariable(Plan);
+  assert(WideIV && "No wide induction variable found");
+  VPRecipeBase* InsertionPoint = &R;
+  auto *WideIVUnderlyingValue = WideIV->getUnderlyingValue();
+  SmallVector<VPValue *, 4> SIOperands;
+  auto Operands =
+      make_range(Instr->operands().begin(), Instr->operands().end());
+  for (auto *Op = Operands.begin(); Op != Operands.end(); ++Op) {
+    if (Op->get() == WideIVUnderlyingValue) {
+      if (!Plan.hasInterpolatedValue(WideIVUnderlyingValue)) {
+        for (unsigned It = 1; It <= UserSI; ++It) {
+          Value *ConstantAddedValue =
+              ConstantInt::get(WideIVUnderlyingValue->getType(), It, false);
+          Instruction *TempAdd = BinaryOperator::Create(
+              Instruction::Add, WideIVUnderlyingValue, ConstantAddedValue,
+              Twine("temp.add.").concat(Twine(It)));
+          SIOperands.push_back(WideIV);
+          SIOperands.push_back(new VPValue(ConstantAddedValue));
+          auto *TempAddRecipe =
+              new VPInterpolateRecipe(TempAdd, make_range(SIOperands.begin(), SIOperands.end()));
+          Plan.addInterpolatedVPValue(TempAdd, TempAddRecipe);
+          Plan.addInterpolatedVPValue(WideIVUnderlyingValue, TempAddRecipe);
+          TempAddRecipe->insertAfter(InsertionPoint);
+          InsertionPoint = TempAddRecipe;
+          SIOperands.clear();
         }
       }
+      break;
+    }
+  }
+  return InsertionPoint;
+}
+
+void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
+                                         unsigned UserSI) {
+  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
+      Plan.getEntry());
+  VPRecipeBase* InsertionPoint;
+  for (VPBasicBlock *SIVPBB :
+       reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
+    // The recipes in the block are processed in reverse order, to catch chains
+    // of dead recipes.
+    auto R = SIVPBB->begin();
+    if (SIVPBB->begin() == SIVPBB->end())
+      continue;
+    auto NextR = std::next(SIVPBB->begin());
+    while (R != SIVPBB->end()) {
+      Instruction *Instr = getUnderlyingInstructionOfRecipe(*R);
       if (!Instr) {
-        if (R.definedValues().empty() || !R.getVPValue(0)->getUnderlyingValue())
-          continue;
-        Instr = R.getUnderlyingInstr();
+        R = NextR++;
+        continue;
       }
       auto *Phi = dyn_cast<PHINode>(Instr);
       if (UserSI) {
         SmallVector<VPValue *, 4> SIOperands;
-        if (Phi && Phi->getParent() == OrigLoop->getHeader())
+        if (Phi && Phi->getParent() == OrigLoop->getHeader()) {
+          R = NextR++;
           continue;
+        }
+        InsertionPoint = insertAdditionForIV(Plan, Instr, *R, UserSI);
         for (unsigned Index = 0; Index < UserSI; ++Index) {
           SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
-          auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
-          SIRecipe->insertBefore(&R);
+          auto *SIRecipe = new VPInterpolateRecipe(
+              Instr, make_range(SIOperands.begin(), SIOperands.end()));
+          SIRecipe->insertAfter(InsertionPoint);
+          InsertionPoint = SIRecipe;
           Plan.addInterpolatedVPValue(Instr, SIRecipe);
-//          Plan.addInterpolatedVPValue(Instr, SIRecipe);
         }
       }
+      R = NextR++;
+
     }
   }
 }

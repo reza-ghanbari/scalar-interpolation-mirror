@@ -1324,6 +1324,14 @@ public:
 };
 
 class VPInterpolateRecipe : public VPRecipeWithIRFlags, public VPValue {
+private:
+  /// Returns true if the recipe uses scalars of operand \p Op.
+  bool usesScalars(const VPValue *Op) const override {
+    assert(is_contained(operands(), Op) &&
+           "Op must be an operand of the recipe");
+    return true;
+  }
+
 public:
   template <typename IterT>
   VPInterpolateRecipe(Instruction *I, iterator_range<IterT> Operands)
@@ -2597,6 +2605,10 @@ public:
     return InterpolatedValue2VPValue[V][Index];
   }
 
+  bool hasInterpolatedValue(Value* V) {
+    return InterpolatedValue2VPValue.count(V);
+  }
+
   /// Gets the VPValue for \p V or adds a new live-in (if none exists yet) for
   /// \p V.
   VPValue *getVPValueOrAddLiveIn(Value *V) {
@@ -2650,7 +2662,7 @@ public:
   SmallVector<VPValue *>
   mapToInterpolatedVPValues(User::op_range Operands, unsigned SIIndex) {
     SmallVector<VPValue *, 4> SIOperands;
-    for (auto Op = Operands.begin(); Op != Operands.end(); ++Op) {
+    for (auto* Op = Operands.begin(); Op != Operands.end(); ++Op) {
       SIOperands.push_back(getInterpolatedVPValueOrAddLiveIn(*Op, SIIndex));
     }
     return SIOperands;
