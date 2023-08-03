@@ -3365,7 +3365,7 @@ void InnerLoopVectorizer::fixupIVUsers(PHINode *OrigPhi,
   // that is Start + (Step * (CRD - 1)).
   for (User *U : OrigPhi->users()) {
     auto *UI = cast<Instruction>(U);
-    if (!OrigLoop->contains(UI)) {
+    if (!OrigLoop->contains(UI) && !Plan.isInterpolatedValue(U)) {
       assert(isa<PHINode>(UI) && "Expected LCSSA form");
       IRBuilder<> B(MiddleBlock->getTerminator());
 
@@ -10336,9 +10336,7 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   // Get user vectorization factor and interleave count.
   ElementCount UserVF = Hints.getWidth();
   unsigned UserIC = Hints.getInterleave();
-  //  TODO-SI: get user scalar interpolation factor here
   unsigned UserSI = Hints.getScalarInterpolation();
-  LLVM_DEBUG(dbgs() << "LV: HEY! Using user SI " << UserSI << "\n");
 
   // Plan how to best vectorize, return the best VF and its cost.
   std::optional<VectorizationFactor> MaybeVF = LVP.plan(UserVF, UserIC);

@@ -2609,6 +2609,15 @@ public:
     return InterpolatedValue2VPValue.count(V);
   }
 
+  bool isInterpolatedValue(User* U) {
+    Instruction* I = cast<Instruction>(U);
+    if (!I->getParent()) {
+      U->dropAllReferences();
+      return true;
+    }
+    return false;
+  }
+
   /// Gets the VPValue for \p V or adds a new live-in (if none exists yet) for
   /// \p V.
   VPValue *getVPValueOrAddLiveIn(Value *V) {
