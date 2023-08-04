@@ -293,7 +293,7 @@ void VPInstruction::generateInstruction(VPTransformState &State,
   case VPInstruction::CalculateTripCountMinusVF: {
     Value *ScalarTC = State.get(getOperand(0), {0, 0});
     Value *Step =
-        createStepForVF(Builder, ScalarTC->getType(), State.VF, State.UF);
+        createStepForVF(Builder, ScalarTC->getType(), State.VF, State.UF, State.SIFactor);
     Value *Sub = Builder.CreateSub(ScalarTC, Step);
     Value *Cmp = Builder.CreateICmp(CmpInst::Predicate::ICMP_UGT, ScalarTC, Step);
     Value *Zero = ConstantInt::get(ScalarTC->getType(), 0);
@@ -310,7 +310,7 @@ void VPInstruction::generateInstruction(VPTransformState &State,
       // The loop step is equal to the vectorization factor (num of SIMD
       // elements) times the unroll factor (num of SIMD instructions).
       Value *Step =
-          createStepForVF(Builder, Phi->getType(), State.VF, State.UF);
+          createStepForVF(Builder, Phi->getType(), State.VF, State.UF, State.SIFactor);
       Next = Builder.CreateAdd(Phi, Step, Name, IsNUW, false);
     } else {
       Next = State.get(this, 0);
@@ -331,7 +331,7 @@ void VPInstruction::generateInstruction(VPTransformState &State,
 
     // The canonical IV is incremented by the vectorization factor (num of SIMD
     // elements) times the unroll part.
-    Value *Step = createStepForVF(Builder, IV->getType(), State.VF, Part);
+    Value *Step = createStepForVF(Builder, IV->getType(), State.VF, Part, State.SIFactor);
     Value *Next = Builder.CreateAdd(IV, Step, Name, IsNUW, false);
     State.set(this, Next, Part);
     break;
@@ -1161,6 +1161,7 @@ void VPWidenCanonicalIVRecipe::execute(VPTransformState &State) {
                       ? CanonicalIV
                       : Builder.CreateVectorSplat(VF, CanonicalIV, "broadcast");
   for (unsigned Part = 0, UF = State.UF; Part < UF; ++Part) {
+//    todo-si: see if it is needed to add SIFactor here as well.
     Value *VStep = createStepForVF(Builder, STy, VF, Part);
     if (VF.isVector()) {
       VStep = Builder.CreateVectorSplat(VF, VStep);
@@ -1364,5 +1365,34 @@ void VPActiveLaneMaskPHIRecipe::print(raw_ostream &O, const Twine &Indent,
   printAsOperand(O, SlotTracker);
   O << " = phi ";
   printOperands(O, SlotTracker);
+}
+#endif
+
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+void VPInterpolateRecipe::print(raw_ostream &O, const Twine &Indent,
+                              VPSlotTracker &SlotTracker) const {
+  O << Indent << "INTERPOLATE ";
+
+  const auto &Operands = operands();
+  const auto *const OpsBegin = Operands.begin();
+  const auto *const OpsEnd = Operands.end();
+
+  if (!getUnderlyingInstr()->getType()->isVoidTy()) {
+    printAsOperand(O, SlotTracker);
+    O << " = ";
+  }
+
+  if (auto *CB = dyn_cast<CallBase>(getUnderlyingInstr())) {
+    O << "call @" << CB->getCalledFunction()->getName() << "(";
+    interleaveComma(make_range(OpsBegin,  OpsEnd),
+                    O, [&O, &SlotTracker](VPValue *Op) {
+                      Op->printAsOperand(O, SlotTracker);
+                    });
+    O << ")";
+  } else {
+    O << Instruction::getOpcodeName(getUnderlyingInstr()->getOpcode()) << " ";
+    printOperands(O, SlotTracker);
+  }
 }
 #endif

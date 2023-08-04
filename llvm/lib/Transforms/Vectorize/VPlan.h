@@ -59,6 +59,7 @@ class VPBasicBlock;
 class VPRegionBlock;
 class VPlan;
 class VPReplicateRecipe;
+class VPInterpolateRecipe;
 class VPlanSlp;
 class Value;
 class LoopVersioning;
@@ -74,7 +75,7 @@ Value *getRuntimeVF(IRBuilderBase &B, Type *Ty, ElementCount VF);
 
 /// Return a value for Step multiplied by VF.
 Value *createStepForVF(IRBuilderBase &B, Type *Ty, ElementCount VF,
-                       int64_t Step);
+                       int64_t Step, int64_t SIFactor = 0);
 
 const SCEV *createTripCountSCEV(Type *IdxTy, PredicatedScalarEvolution &PSE,
                                 Loop *CurLoop = nullptr);
@@ -232,15 +233,16 @@ struct VPIteration {
 /// VPTransformState holds information passed down when "executing" a VPlan,
 /// needed for generating the output IR.
 struct VPTransformState {
-  VPTransformState(ElementCount VF, unsigned UF, LoopInfo *LI,
+  VPTransformState(ElementCount VF, unsigned UF, unsigned SIFactor, LoopInfo *LI,
                    DominatorTree *DT, IRBuilderBase &Builder,
                    InnerLoopVectorizer *ILV, VPlan *Plan)
-      : VF(VF), UF(UF), LI(LI), DT(DT), Builder(Builder), ILV(ILV), Plan(Plan),
+      : VF(VF), UF(UF), SIFactor(SIFactor), LI(LI), DT(DT), Builder(Builder), ILV(ILV), Plan(Plan),
         LVer(nullptr) {}
 
   /// The chosen Vectorization and Unroll Factors of the loop being vectorized.
   ElementCount VF;
   unsigned UF;
+  unsigned SIFactor;
 
   /// Hold the indices to generate specific scalar instructions. Null indicates
   /// that all instances are to be generated, using either scalar or vector
@@ -257,6 +259,8 @@ struct VPTransformState {
 
     using ScalarsPerPartValuesTy = SmallVector<SmallVector<Value *, 4>, 2>;
     DenseMap<VPValue *, ScalarsPerPartValuesTy> PerPartScalars;
+
+    DenseMap<VPValue *, Value *> InterpolatedScalars;
   } Data;
 
   /// Get the generated Value for a given VPValue and a given Part. Note that
@@ -265,6 +269,8 @@ struct VPTransformState {
   /// callers a consistent API.
   /// \see set.
   Value *get(VPValue *Def, unsigned Part);
+
+  Value *getInterpolateValue(VPValue *Def);
 
   /// Get the generated Value for a given VPValue and given Part and Lane.
   Value *get(VPValue *Def, const VPIteration &Instance);
@@ -287,6 +293,12 @@ struct VPTransformState {
     return Instance.Part < I->second.size() &&
            CacheIdx < I->second[Instance.Part].size() &&
            I->second[Instance.Part][CacheIdx];
+  }
+
+  void setInterpolate(VPValue *Def, Value *V) {
+    if (!Data.InterpolatedScalars.count(Def)) {
+      Data.InterpolatedScalars[Def] = V;
+    }
   }
 
   /// Set the generated Value for a given VPValue and a given Part.
@@ -1310,6 +1322,34 @@ public:
   virtual VPRecipeBase &getBackedgeRecipe() {
     return *getBackedgeValue()->getDefiningRecipe();
   }
+};
+
+class VPInterpolateRecipe : public VPRecipeWithIRFlags, public VPValue {
+private:
+  /// Returns true if the recipe uses scalars of operand \p Op.
+  bool usesScalars(const VPValue *Op) const override {
+    assert(is_contained(operands(), Op) &&
+           "Op must be an operand of the recipe");
+    return true;
+  }
+
+public:
+  template <typename IterT>
+  VPInterpolateRecipe(Instruction *I, iterator_range<IterT> Operands)
+      : VPRecipeWithIRFlags(VPDef::VPInterpolateSC, Operands), VPValue(this, I) {
+  }
+
+  ~VPInterpolateRecipe() override = default;
+
+  VP_CLASSOF_IMPL(VPDef::VPInterpolateSC)
+
+  void execute(VPTransformState &State) override;
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+  /// Print the recipe.
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
+#endif
 };
 
 /// A recipe for handling phi nodes of integer and floating-point inductions,
@@ -2427,6 +2467,8 @@ class VPlan {
   /// VPlan.
   Value2VPValueTy Value2VPValue;
 
+  DenseMap<Value *, SmallVector<VPValue *>> InterpolatedValue2VPValue;
+
   /// Contains all the external definitions created for this VPlan. External
   /// definitions are VPValues that hold a pointer to their underlying IR.
   SmallVector<VPValue *, 16> VPLiveInsToFree;
@@ -2537,6 +2579,16 @@ public:
     Value2VPValue[V] = VPV;
   }
 
+  void addInterpolatedVPValue(Value* V, VPValue* VPV) {
+    InterpolatedValue2VPValue[V].push_back(VPV);
+  }
+
+  void setInterpolatedVPValue(Value* V, VPValue* VPV, unsigned Index) {
+    assert(V && "Trying to add a null Value to VPlan");
+    assert(Index < InterpolatedValue2VPValue[V].size() && "Index out of bounds");
+    InterpolatedValue2VPValue[V][Index] = VPV;
+  }
+
   /// Returns the VPValue for \p V. \p OverrideAllowed can be used to disable
   ///   /// checking whether it is safe to query VPValues using IR Values.
   VPValue *getVPValue(Value *V, bool OverrideAllowed = false) {
@@ -2546,6 +2598,25 @@ public:
             Value2VPValue[V]->isLiveIn()) &&
            "Value2VPValue mapping may be out of date!");
     return Value2VPValue[V];
+  }
+
+  VPValue* getInterpolatedVPValue(Value* V, unsigned Index) {
+    assert(V && "Trying to get the VPValue of a null Value");
+    assert(InterpolatedValue2VPValue.count(V) && "Value does not exist in VPlan");
+    return InterpolatedValue2VPValue[V][Index];
+  }
+
+  bool hasInterpolatedValue(Value* V) {
+    return InterpolatedValue2VPValue.count(V);
+  }
+
+  bool isInterpolatedValue(User* U) {
+    Instruction* I = cast<Instruction>(U);
+    if (!I->getParent()) {
+      U->dropAllReferences();
+      return true;
+    }
+    return false;
   }
 
   /// Gets the VPValue for \p V or adds a new live-in (if none exists yet) for
@@ -2559,6 +2630,16 @@ public:
     }
 
     return getVPValue(V);
+  }
+
+  VPValue *getInterpolatedVPValueOrAddLiveIn(Value* V, unsigned SIIndex) {
+    assert(V && "Trying to get or add the VPValue of a null Value");
+    if (InterpolatedValue2VPValue.count(V) <= SIIndex) {
+      VPValue* VPV = new VPValue(V);
+//      VPLiveInsToFree.push_back(VPV);
+      addInterpolatedVPValue(V, VPV);
+    }
+    return getInterpolatedVPValue(V, SIIndex);
   }
 
   void removeVPValueFor(Value *V) {
@@ -2586,6 +2667,15 @@ public:
       return getVPValueOrAddLiveIn(Op);
     };
     return map_range(Operands, Fn);
+  }
+
+  SmallVector<VPValue *>
+  mapToInterpolatedVPValues(User::op_range Operands, unsigned SIIndex) {
+    SmallVector<VPValue *, 4> SIOperands;
+    for (auto* Op = Operands.begin(); Op != Operands.end(); ++Op) {
+      SIOperands.push_back(getInterpolatedVPValueOrAddLiveIn(*Op, SIIndex));
+    }
+    return SIOperands;
   }
 
   /// Returns the VPRegionBlock of the vector loop.

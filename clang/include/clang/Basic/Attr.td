@@ -3666,6 +3666,7 @@ def LoopHint : Attr {
   /// vectorize_width: vectorize loop operations with width 'Value'.
   /// interleave: interleave multiple loop iterations if State == Enable.
   /// interleave_count: interleaves 'Value' loop iterations.
+  /// scalar_interpolation_count: adds 'Value' scalar instructions between vectorized instructions.
   /// unroll: fully unroll loop if State == Enable.
   /// unroll_count: unrolls loop 'Value' times.
   /// unroll_and_jam: attempt to unroll and jam loop if State == Enable.
@@ -3685,11 +3686,11 @@ def LoopHint : Attr {
 
   /// State of the loop optimization specified by the spelling.
   let Args = [EnumArgument<"Option", "OptionType",
-                          ["vectorize", "vectorize_width", "interleave", "interleave_count",
+                          ["vectorize", "vectorize_width", "interleave", "interleave_count", "scalar_interpolation_count",
                            "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count",
                            "pipeline", "pipeline_initiation_interval", "distribute",
                            "vectorize_predicate"],
-                          ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount",
+                          ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount", "ScalarInterpolationCount",
                            "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount",
                            "PipelineDisabled", "PipelineInitiationInterval", "Distribute",
                            "VectorizePredicate"]>,
@@ -3707,6 +3708,7 @@ def LoopHint : Attr {
     case VectorizeWidth: return "vectorize_width";
     case Interleave: return "interleave";
     case InterleaveCount: return "interleave_count";
+    case ScalarInterpolationCount: return "scalar_interpolation_count";
     case Unroll: return "unroll";
     case UnrollCount: return "unroll_count";
     case UnrollAndJam: return "unroll_and_jam";

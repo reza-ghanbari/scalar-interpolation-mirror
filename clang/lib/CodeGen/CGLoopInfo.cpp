@@ -219,6 +219,7 @@ LoopInfo::createLoopVectorizeMetadata(const LoopAttributes &Attrs,
   else if (Attrs.VectorizeEnable != LoopAttributes::Unspecified ||
            Attrs.VectorizePredicateEnable != LoopAttributes::Unspecified ||
            Attrs.InterleaveCount != 0 || Attrs.VectorizeWidth != 0 ||
+           Attrs.ScalarInterpolationCount != 0 ||
            Attrs.VectorizeScalable != LoopAttributes::Unspecified)
     Enabled = true;
 
@@ -281,6 +282,15 @@ LoopInfo::createLoopVectorizeMetadata(const LoopAttributes &Attrs,
         MDString::get(Ctx, "llvm.loop.vectorize.scalable.enable"),
         ConstantAsMetadata::get(
             ConstantInt::get(llvm::Type::getInt1Ty(Ctx), IsScalable))};
+    Args.push_back(MDNode::get(Ctx, Vals));
+  }
+
+  // Setting interleave.count
+  if (Attrs.ScalarInterpolationCount > 0) {
+    Metadata *Vals[] = {
+        MDString::get(Ctx, "llvm.loop.scalar.interpolation.count"),
+        ConstantAsMetadata::get(ConstantInt::get(llvm::Type::getInt32Ty(Ctx),
+                                                 Attrs.ScalarInterpolationCount))};
     Args.push_back(MDNode::get(Ctx, Vals));
   }
 
@@ -451,7 +461,7 @@ LoopAttributes::LoopAttributes(bool IsParallel)
       UnrollAndJamEnable(LoopAttributes::Unspecified),
       VectorizePredicateEnable(LoopAttributes::Unspecified), VectorizeWidth(0),
       VectorizeScalable(LoopAttributes::Unspecified), InterleaveCount(0),
-      UnrollCount(0), UnrollAndJamCount(0),
+      ScalarInterpolationCount(0), UnrollCount(0), UnrollAndJamCount(0),
       DistributeEnable(LoopAttributes::Unspecified), PipelineDisabled(false),
       PipelineInitiationInterval(0), MustProgress(false) {}
 
@@ -460,6 +470,7 @@ void LoopAttributes::clear() {
   VectorizeWidth = 0;
   VectorizeScalable = LoopAttributes::Unspecified;
   InterleaveCount = 0;
+  ScalarInterpolationCount = 0;
   UnrollCount = 0;
   UnrollAndJamCount = 0;
   VectorizeEnable = LoopAttributes::Unspecified;
@@ -487,6 +498,7 @@ LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs,
   if (!Attrs.IsParallel && Attrs.VectorizeWidth == 0 &&
       Attrs.VectorizeScalable == LoopAttributes::Unspecified &&
       Attrs.InterleaveCount == 0 && Attrs.UnrollCount == 0 &&
+      Attrs.ScalarInterpolationCount == 0 &&
       Attrs.UnrollAndJamCount == 0 && !Attrs.PipelineDisabled &&
       Attrs.PipelineInitiationInterval == 0 &&
       Attrs.VectorizePredicateEnable == LoopAttributes::Unspecified &&
@@ -526,6 +538,7 @@ void LoopInfo::finish() {
     BeforeJam.VectorizeEnable = Attrs.VectorizeEnable;
     BeforeJam.DistributeEnable = Attrs.DistributeEnable;
     BeforeJam.VectorizePredicateEnable = Attrs.VectorizePredicateEnable;
+    BeforeJam.ScalarInterpolationCount = Attrs.ScalarInterpolationCount;
 
     switch (Attrs.UnrollEnable) {
     case LoopAttributes::Unspecified:
@@ -667,6 +680,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
+      case LoopHintAttr::ScalarInterpolationCount:
       case LoopHintAttr::PipelineInitiationInterval:
         llvm_unreachable("Options cannot be disabled.");
         break;
@@ -694,6 +708,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
+      case LoopHintAttr::ScalarInterpolationCount:
       case LoopHintAttr::PipelineDisabled:
       case LoopHintAttr::PipelineInitiationInterval:
         llvm_unreachable("Options cannot enabled.");
@@ -715,6 +730,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
+      case LoopHintAttr::ScalarInterpolationCount:
       case LoopHintAttr::Distribute:
       case LoopHintAttr::PipelineDisabled:
       case LoopHintAttr::PipelineInitiationInterval:
@@ -736,6 +752,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
+      case LoopHintAttr::ScalarInterpolationCount:
       case LoopHintAttr::Distribute:
       case LoopHintAttr::PipelineDisabled:
       case LoopHintAttr::PipelineInitiationInterval:
@@ -763,6 +780,9 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       switch (Option) {
       case LoopHintAttr::InterleaveCount:
         setInterleaveCount(ValueInt);
+        break;
+      case LoopHintAttr::ScalarInterpolationCount:
+        setScalarInterpolationCount(ValueInt);
         break;
       case LoopHintAttr::UnrollCount:
         setUnrollCount(ValueInt);

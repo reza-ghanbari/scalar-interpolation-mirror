@@ -399,7 +399,7 @@ TransformationMode llvm::hasVectorizeTransformation(const Loop *L) {
       getOptionalElementCountLoopAttribute(L);
   std::optional<int> InterleaveCount =
       getOptionalIntLoopAttribute(L, "llvm.loop.interleave.count");
-
+// TODO-SI: what to do for scalar interpolation in this case?
   // 'Forcing' vector width and interleave count to one effectively disables
   // this tranformation.
   if (Enable == true && VectorizeWidth && VectorizeWidth->isScalar() &&

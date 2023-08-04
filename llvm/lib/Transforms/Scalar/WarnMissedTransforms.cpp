@@ -51,7 +51,9 @@ static void warnAboutLeftoverTransformations(Loop *L,
         getOptionalElementCountLoopAttribute(L);
     std::optional<int> InterleaveCount =
         getOptionalIntLoopAttribute(L, "llvm.loop.interleave.count");
-
+    std::optional<int> ScalarInterpolationCount =
+        getOptionalIntLoopAttribute(L, "llvm.loop.scalar.interpolation.count");
+//    TODO-SI: what should we do for scalar interpolation in this case?
     if (!VectorizeWidth || VectorizeWidth->isVector())
       ORE->emit(
           DiagnosticInfoOptimizationFailure(DEBUG_TYPE,
