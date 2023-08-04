@@ -75,7 +75,7 @@ Value *getRuntimeVF(IRBuilderBase &B, Type *Ty, ElementCount VF);
 
 /// Return a value for Step multiplied by VF.
 Value *createStepForVF(IRBuilderBase &B, Type *Ty, ElementCount VF,
-                       int64_t Step);
+                       int64_t Step, int64_t SIFactor = 0);
 
 const SCEV *createTripCountSCEV(Type *IdxTy, PredicatedScalarEvolution &PSE,
                                 Loop *CurLoop = nullptr);
@@ -233,15 +233,16 @@ struct VPIteration {
 /// VPTransformState holds information passed down when "executing" a VPlan,
 /// needed for generating the output IR.
 struct VPTransformState {
-  VPTransformState(ElementCount VF, unsigned UF, LoopInfo *LI,
+  VPTransformState(ElementCount VF, unsigned UF, unsigned SIFactor, LoopInfo *LI,
                    DominatorTree *DT, IRBuilderBase &Builder,
                    InnerLoopVectorizer *ILV, VPlan *Plan)
-      : VF(VF), UF(UF), LI(LI), DT(DT), Builder(Builder), ILV(ILV), Plan(Plan),
+      : VF(VF), UF(UF), SIFactor(SIFactor), LI(LI), DT(DT), Builder(Builder), ILV(ILV), Plan(Plan),
         LVer(nullptr) {}
 
   /// The chosen Vectorization and Unroll Factors of the loop being vectorized.
   ElementCount VF;
   unsigned UF;
+  unsigned SIFactor;
 
   /// Hold the indices to generate specific scalar instructions. Null indicates
   /// that all instances are to be generated, using either scalar or vector

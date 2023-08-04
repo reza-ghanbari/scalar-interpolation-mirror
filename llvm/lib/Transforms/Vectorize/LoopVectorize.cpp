@@ -529,6 +529,10 @@ public:
                             VPInterpolateRecipe *SIRecipe,
                             VPTransformState &State);
 
+  void setScalarInterpolationFactor(unsigned InterpolationFactor) {
+    ScalarInterpolationFactor = InterpolationFactor;
+  }
+
   /// Construct the vector value of a scalarized value \p V one lane at a time.
   void packScalarIntoVectorValue(VPValue *Def, const VPIteration &Instance,
                                  VPTransformState &State);
@@ -714,6 +718,8 @@ protected:
   /// The vectorization unroll factor to use. Each scalar is vectorized to this
   /// many different vector instructions.
   unsigned UF;
+
+  unsigned ScalarInterpolationFactor = 0;
 
   /// The builder that we use
   IRBuilder<> Builder;
@@ -989,9 +995,9 @@ namespace llvm {
 
 /// Return a value for Step multiplied by VF.
 Value *createStepForVF(IRBuilderBase &B, Type *Ty, ElementCount VF,
-                       int64_t Step) {
+                       int64_t Step, int64_t SIFactor) {
   assert(Ty->isIntegerTy() && "Expected an integer step");
-  return B.CreateElementCount(Ty, VF.multiplyCoefficientBy(Step));
+  return B.CreateElementCount(Ty, VF.multiplyCoefficientBy(Step).getWithIncrement(SIFactor));
 }
 
 /// Return the runtime value for VF.
@@ -2892,7 +2898,7 @@ InnerLoopVectorizer::getOrCreateVectorTripCount(BasicBlock *InsertBlock) {
 
   Type *Ty = TC->getType();
   // This is where we can make the step a runtime constant.
-  Value *Step = createStepForVF(Builder, Ty, VF, UF);
+  Value *Step = createStepForVF(Builder, Ty, VF, UF, ScalarInterpolationFactor);
 
   // If the tail is to be folded by masking, round the number of iterations N
   // up to a multiple of Step instead of rounding down. This is done by first
@@ -7716,7 +7722,7 @@ SCEV2ValueTy LoopVectorizationPlanner::executePlan(
     VPlanTransforms::optimizeForVFAndUF(BestVPlan, BestVF, BestUF, PSE);
 
   // Perform the actual loop transformation.
-  VPTransformState State{BestVF, BestUF, LI, DT, ILV.Builder, &ILV, &BestVPlan};
+  VPTransformState State{BestVF, BestUF, ILV.ScalarInterpolationFactor, LI, DT, ILV.Builder, &ILV, &BestVPlan};
 
   // 0. Generate SCEV-dependent code into the preheader, including TripCount,
   // before making any changes to the CFG.
@@ -10572,6 +10578,7 @@ bool LoopVectorizePass::processLoop(Loop *L) {
         InnerLoopVectorizer LB(L, PSE, LI, DT, TLI, TTI, AC, ORE, VF.Width,
                                VF.MinProfitableTripCount, IC, &LVL, &CM, BFI,
                                PSI, Checks);
+        LB.setScalarInterpolationFactor(UserSI);
 
         VPlan &BestPlan = LVP.getBestPlanFor(VF.Width);
         LVP.executePlan(VF.Width, IC, BestPlan, LB, DT, false);
