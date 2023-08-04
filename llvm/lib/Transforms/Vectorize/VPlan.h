@@ -2634,7 +2634,7 @@ public:
 
   VPValue *getInterpolatedVPValueOrAddLiveIn(Value* V, unsigned SIIndex) {
     assert(V && "Trying to get or add the VPValue of a null Value");
-    if (InterpolatedValue2VPValue.count(V) >= SIIndex) {
+    if (InterpolatedValue2VPValue.count(V) <= SIIndex) {
       VPValue* VPV = new VPValue(V);
 //      VPLiveInsToFree.push_back(VPV);
       addInterpolatedVPValue(V, VPV);
