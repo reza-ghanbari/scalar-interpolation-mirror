@@ -752,6 +752,8 @@ VPWidenIntOrFpInductionRecipe *getWidenInductionVariable(VPlan &Plan) {
     WideIV = dyn_cast_or_null<VPWidenIntOrFpInductionRecipe>(&Phi);
     if (!WideIV)
       continue;
+    else
+      break;
   }
   return WideIV;
 }
