@@ -2990,15 +2990,15 @@ void InnerLoopVectorizer::emitIterationCountCheck(BasicBlock *Bypass) {
   Value *CheckMinIters = Builder.getFalse();
   auto CreateStep = [&]() -> Value * {
     // Create step with max(MinProTripCount, UF * VF).
-    if (UF * VF.getKnownMinValue() >= MinProfitableTripCount.getKnownMinValue())
-      return createStepForVF(Builder, CountTy, VF, UF);
+    if ((UF * VF.getKnownMinValue() + ScalarInterpolationFactor) >= MinProfitableTripCount.getKnownMinValue())
+      return createStepForVF(Builder, CountTy, VF, UF, ScalarInterpolationFactor);
 
     Value *MinProfTC =
-        createStepForVF(Builder, CountTy, MinProfitableTripCount, 1);
+        createStepForVF(Builder, CountTy, MinProfitableTripCount, 1, ScalarInterpolationFactor);
     if (!VF.isScalable())
       return MinProfTC;
     return Builder.CreateBinaryIntrinsic(
-        Intrinsic::umax, MinProfTC, createStepForVF(Builder, CountTy, VF, UF));
+        Intrinsic::umax, MinProfTC, createStepForVF(Builder, CountTy, VF, UF, ScalarInterpolationFactor));
   };
 
   TailFoldingStyle Style = Cost->getTailFoldingStyle();
@@ -3372,11 +3372,6 @@ void InnerLoopVectorizer::fixupIVUsers(PHINode *OrigPhi,
   for (User *U : OrigPhi->users()) {
     auto *UI = cast<Instruction>(U);
     if (!OrigLoop->contains(UI) && !(ScalarInterpolationFactor > 0 && Plan.isInterpolatedValue(U))) {
-      if (!isa<PHINode>(UI)) {
-        errs() << "SI: Here is the trouble maker: " << *UI << "\n";
-      } else {
-        errs() << "SI: This is a normal case with SIFactor = " << ScalarInterpolationFactor << "\n";
-      }
       assert(isa<PHINode>(UI) && "Expected LCSSA form");
       IRBuilder<> B(MiddleBlock->getTerminator());
 
@@ -10584,8 +10579,6 @@ bool LoopVectorizePass::processLoop(Loop *L) {
                                VF.MinProfitableTripCount, IC, &LVL, &CM, BFI,
                                PSI, Checks);
         LB.setScalarInterpolationFactor(UserSI);
-        errs() << "SI: Here is the input user si: " << UserSI << "\n";
-
         VPlan &BestPlan = LVP.getBestPlanFor(VF.Width);
         LVP.executePlan(VF.Width, IC, BestPlan, LB, DT, false);
         ++LoopsVectorized;
