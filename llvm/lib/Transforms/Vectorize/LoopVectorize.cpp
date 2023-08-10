@@ -9026,18 +9026,6 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
         Recipe->insertBefore(*HeaderVPBB, HeaderVPBB->getFirstNonPhi());
       } else
         VPBB->appendRecipe(Recipe);
-
-//      if (UserSI) {
-//        SmallVector<VPValue *, 4> SIOperands;
-//        if (Phi && Phi->getParent() == OrigLoop->getHeader())
-//          continue;
-//        for (unsigned Index = 0; Index < UserSI; ++Index) {
-//          SIOperands = Plan->mapToInterpolatedVPValues(Instr->operands(), Index);
-//          auto *SIRecipe = new VPInterpolateRecipe(Instr, make_range(SIOperands.begin(), SIOperands.end()));
-//          Plan->addInterpolatedVPValue(Instr, SIRecipe);
-//          VPBB->appendRecipe(SIRecipe);
-//        }
-//      }
     }
 
     VPBlockUtils::insertBlockAfter(new VPBasicBlock(), VPBB);
