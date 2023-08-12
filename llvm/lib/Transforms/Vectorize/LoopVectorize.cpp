@@ -3747,6 +3747,20 @@ void InnerLoopVectorizer::fixVectorizedLoop(VPTransformState &State,
                    IVEndValues[Entry.first], LoopMiddleBlock,
                    VectorLoop->getHeader(), Plan, State);
   }
+  if (ScalarInterpolationFactor > 0) {
+    // Fix-up external users of the induction variables.
+//    errs() << "SI: Here is the size of all the induction variables: " << Legal->getInductionVars().size() << "\n";
+    for (const auto &Entry : Legal->getInductionVars()) {
+      for (auto User: Entry.first->users()) {
+        if (!cast<Instruction>(User)->getParent()) {
+//          errs() << "Here is the orphan instruction: " << *cast<Instruction>(User) << "\n";
+          User->dropAllReferences();
+        }
+
+      }
+//      errs() << "SI: Here is one entry: " << *Entry.first << "\n";
+    }
+  }
 
   // Fix LCSSA phis not already fixed earlier. Extracts may need to be generated
   // in the exit block, so update the builder.
