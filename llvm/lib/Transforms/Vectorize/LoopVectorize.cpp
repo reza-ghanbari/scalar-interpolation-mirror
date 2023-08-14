@@ -9118,7 +9118,8 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   Plan->disableValue2VPValue();
 
   VPlanTransforms::removeDeadRecipes(*Plan);
-  VPlanTransforms::applyInterpolation(*Plan, OrigLoop, UserSI);
+  if (UserSI > 0)
+    VPlanTransforms::applyInterpolation(*Plan, OrigLoop, UserSI);
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
   VPlanTransforms::removeDeadRecipes(*Plan);
 

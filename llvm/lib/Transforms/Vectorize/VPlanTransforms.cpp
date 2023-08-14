@@ -774,7 +774,7 @@ Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R) {
   return Instr;
 }
 
-VPRecipeBase* insertAdditionForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R, unsigned UserSI) {
+VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R, unsigned UserSI) {
   auto *WideIV = getWidenInductionVariable(Plan);
   assert(WideIV && "No wide induction variable found");
   VPRecipeBase* InsertionPoint = &R;
@@ -839,7 +839,7 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
           R = NextR++;
           continue;
         }
-        InsertionPoint = insertAdditionForIV(Plan, Instr, *R, UserSI);
+        InsertionPoint = insertUpdateInstructionsForIV(Plan, Instr, *R, UserSI);
         for (unsigned Index = 0; Index < UserSI; ++Index) {
           SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
           auto *SIRecipe = new VPInterpolateRecipe(
