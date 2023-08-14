@@ -3749,11 +3749,9 @@ void InnerLoopVectorizer::fixVectorizedLoop(VPTransformState &State,
   }
   if (ScalarInterpolationFactor > 0) {
     // Fix-up external users of the induction variables.
-//    errs() << "SI: Here is the size of all the induction variables: " << Legal->getInductionVars().size() << "\n";
     for (const auto &Entry : Legal->getInductionVars()) {
       for (auto User: Entry.first->users()) {
         if (!cast<Instruction>(User)->getParent()) {
-//          errs() << "Here is the orphan instruction: " << *cast<Instruction>(User) << "\n";
           User->dropAllReferences();
         }
 

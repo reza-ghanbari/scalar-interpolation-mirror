@@ -785,9 +785,14 @@ VPRecipeBase* insertAdditionForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase 
   for (auto *Op = Operands.begin(); Op != Operands.end(); ++Op) {
     if (Op->get() == WideIVUnderlyingValue) {
       if (!Plan.hasInterpolatedValue(WideIVUnderlyingValue)) {
+        uint64_t Step = 1;
+//        todo-si: we should also consider cases in which step is not a constant integer
+        if (auto *StepValue = dyn_cast<ConstantInt>(WideIV->getStepValue()->getUnderlyingValue())) {
+          Step = StepValue->getSExtValue();
+        }
         for (unsigned It = 1; It <= UserSI; ++It) {
           Value *ConstantAddedValue =
-              ConstantInt::get(WideIVUnderlyingValue->getType(), It, false);
+              ConstantInt::get(WideIVUnderlyingValue->getType(), It * Step, false);
           Instruction *TempAdd = BinaryOperator::Create(
               Instruction::Add, WideIVUnderlyingValue, ConstantAddedValue,
               Twine("temp.add.").concat(Twine(It)));
