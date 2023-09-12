@@ -745,17 +745,17 @@ bool VPlanTransforms::adjustFixedOrderRecurrences(VPlan &Plan,
   return true;
 }
 
-VPWidenIntOrFpInductionRecipe *getWidenInductionVariable(VPlan &Plan) {
+SmallVector<VPWidenIntOrFpInductionRecipe *> getWidenInductionVariable(VPlan &Plan) {
   VPBasicBlock *HeaderVPBB = Plan.getVectorLoopRegion()->getEntryBasicBlock();
   VPWidenIntOrFpInductionRecipe *WideIV = nullptr;
+  SmallVector<VPWidenIntOrFpInductionRecipe *> AllWideIVs;
   for (VPRecipeBase &Phi : HeaderVPBB->phis()) {
     WideIV = dyn_cast_or_null<VPWidenIntOrFpInductionRecipe>(&Phi);
-    if (!WideIV)
-      continue;
-    else
-      break;
+    if (WideIV && !WideIV->getTruncInst()) {
+      AllWideIVs.push_back(WideIV);
+    }
   }
-  return WideIV;
+  return AllWideIVs;
 }
 
 Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R) {
@@ -774,40 +774,45 @@ Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R) {
   return Instr;
 }
 
-VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R, unsigned UserSI) {
-  auto *WideIV = getWidenInductionVariable(Plan);
-  assert(WideIV && "No wide induction variable found");
-  VPRecipeBase* InsertionPoint = &R;
-  auto *WideIVUnderlyingValue = WideIV->getUnderlyingValue();
+VPRecipeBase *insertConstantIVModifier(VPlan &Plan,
+                                       VPWidenIntOrFpInductionRecipe *WideIV,
+                                       VPRecipeBase *InsertionPoint,
+                                       Value *WideIVUnderlyingValue,
+                                       uint64_t Step, unsigned int It) {
   SmallVector<VPValue *, 4> SIOperands;
-  auto Operands =
-      make_range(Instr->operands().begin(), Instr->operands().end());
-  for (auto *Op = Operands.begin(); Op != Operands.end(); ++Op) {
-    if (Op->get() == WideIVUnderlyingValue) {
-      if (!Plan.hasInterpolatedValue(WideIVUnderlyingValue)) {
-        uint64_t Step = 1;
-//        todo-si: we should also consider cases in which step is not a constant integer
-        if (auto *StepValue = dyn_cast<ConstantInt>(WideIV->getStepValue()->getUnderlyingValue())) {
-          Step = StepValue->getSExtValue();
+  Value *ConstantAddedValue =
+      ConstantInt::get(WideIVUnderlyingValue->getType(), It * Step, false);
+  Instruction *TempAdd = BinaryOperator::Create(Instruction::Add, WideIVUnderlyingValue, ConstantAddedValue, Twine("temp.add.").concat(Twine(It)));
+  SIOperands.push_back(WideIV);
+  SIOperands.push_back(new VPValue(ConstantAddedValue));
+  auto *TempAddRecipe = new VPInterpolateRecipe(TempAdd, make_range(SIOperands.begin(), SIOperands.end()));
+  Plan.addInterpolatedVPValue(TempAdd, TempAddRecipe);
+  Plan.addInterpolatedVPValue(WideIVUnderlyingValue, TempAddRecipe);
+  TempAddRecipe->insertAfter(InsertionPoint);
+  InsertionPoint = TempAddRecipe;
+  return InsertionPoint;
+}
+
+VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R, unsigned UserSI) {
+  auto WideIVs = getWidenInductionVariable(Plan);
+  assert(WideIVs.size() && "No wide induction variable found");
+  VPRecipeBase* InsertionPoint = &R;
+  for (auto& WideIV: WideIVs) {
+    auto *WideIVUnderlyingValue = WideIV->getUnderlyingValue();
+    for (auto& Op: Instr->operands())  {
+      if (Op == WideIVUnderlyingValue) {
+        if (!Plan.hasInterpolatedValue(WideIVUnderlyingValue)) {
+          uint64_t Step = 1;
+//          todo-si: we should also consider cases in which step is not a constant integer
+          if (auto *StepValue = dyn_cast<ConstantInt>(WideIV->getStepValue()->getUnderlyingValue())) {
+            Step = StepValue->getSExtValue();
+          }
+          for (unsigned It = 1; It <= UserSI; ++It) {
+            InsertionPoint = insertConstantIVModifier(Plan, WideIV, InsertionPoint, WideIVUnderlyingValue, Step, It);
+          }
         }
-        for (unsigned It = 1; It <= UserSI; ++It) {
-          Value *ConstantAddedValue =
-              ConstantInt::get(WideIVUnderlyingValue->getType(), It * Step, false);
-          Instruction *TempAdd = BinaryOperator::Create(
-              Instruction::Add, WideIVUnderlyingValue, ConstantAddedValue,
-              Twine("temp.add.").concat(Twine(It)));
-          SIOperands.push_back(WideIV);
-          SIOperands.push_back(new VPValue(ConstantAddedValue));
-          auto *TempAddRecipe =
-              new VPInterpolateRecipe(TempAdd, make_range(SIOperands.begin(), SIOperands.end()));
-          Plan.addInterpolatedVPValue(TempAdd, TempAddRecipe);
-          Plan.addInterpolatedVPValue(WideIVUnderlyingValue, TempAddRecipe);
-          TempAddRecipe->insertAfter(InsertionPoint);
-          InsertionPoint = TempAddRecipe;
-          SIOperands.clear();
-        }
+        break;
       }
-      break;
     }
   }
   return InsertionPoint;
