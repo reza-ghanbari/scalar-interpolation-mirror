@@ -87,6 +87,8 @@ struct VPlanTransforms {
                                  unsigned BestUF,
                                  PredicatedScalarEvolution &PSE);
 
+  static void applyInterpolationOnVPBasicBlock(VPBasicBlock* SIVPBasicBlock, unsigned int UserSI, VPlan &Plan, Loop *OrigLoop);
+
   static void applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned UserSI);
 };
 

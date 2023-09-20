@@ -803,7 +803,7 @@ VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPR
       if (Op == WideIVUnderlyingValue) {
         if (!Plan.hasInterpolatedValue(WideIVUnderlyingValue)) {
           uint64_t Step = 1;
-//          todo-si: we should also consider cases in which step is not a constant integer
+//          todo-si: should we also consider cases in which step is not a constant integer?
           if (auto *StepValue = dyn_cast<ConstantInt>(WideIV->getStepValue()->getUnderlyingValue())) {
             Step = StepValue->getSExtValue();
           }
@@ -818,44 +818,36 @@ VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPR
   return InsertionPoint;
 }
 
+void VPlanTransforms::applyInterpolationOnVPBasicBlock(VPBasicBlock* SIVPBasicBlock, unsigned int UserSI, VPlan &Plan, Loop *OrigLoop) {
+  VPRecipeBase* InsertionPoint;
+  for (VPRecipeBase &R : make_early_inc_range(*SIVPBasicBlock)) {
+    Instruction *Instr = getUnderlyingInstructionOfRecipe(R);
+    if (!Instr)
+      continue;
+    auto *Phi = dyn_cast<PHINode>(Instr);
+    if (Phi && Phi->getParent() == OrigLoop->getHeader())
+      continue;
+    if (UserSI) {
+      SmallVector<VPValue *, 4> SIOperands;
+      InsertionPoint = insertUpdateInstructionsForIV(Plan, Instr, R, UserSI);
+      for (unsigned Index = 0; Index < UserSI; ++Index) {
+        SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
+        auto *SIRecipe = new VPInterpolateRecipe(
+            Instr, make_range(SIOperands.begin(), SIOperands.end()));
+        SIRecipe->insertAfter(InsertionPoint);
+        InsertionPoint = SIRecipe;
+        Plan.addInterpolatedVPValue(Instr, SIRecipe);
+      }
+    }
+  }
+}
+
 void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
                                          unsigned UserSI) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
-  VPRecipeBase* InsertionPoint;
   for (VPBasicBlock *SIVPBB :
        reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
-    // The recipes in the block are processed in reverse order, to catch chains
-    // of dead recipes.
-    auto R = SIVPBB->begin();
-    if (SIVPBB->begin() == SIVPBB->end())
-      continue;
-    auto NextR = std::next(SIVPBB->begin());
-    while (R != SIVPBB->end()) {
-      Instruction *Instr = getUnderlyingInstructionOfRecipe(*R);
-      if (!Instr) {
-        R = NextR++;
-        continue;
-      }
-      auto *Phi = dyn_cast<PHINode>(Instr);
-      if (UserSI) {
-        SmallVector<VPValue *, 4> SIOperands;
-        if (Phi && Phi->getParent() == OrigLoop->getHeader()) {
-          R = NextR++;
-          continue;
-        }
-        InsertionPoint = insertUpdateInstructionsForIV(Plan, Instr, *R, UserSI);
-        for (unsigned Index = 0; Index < UserSI; ++Index) {
-          SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
-          auto *SIRecipe = new VPInterpolateRecipe(
-              Instr, make_range(SIOperands.begin(), SIOperands.end()));
-          SIRecipe->insertAfter(InsertionPoint);
-          InsertionPoint = SIRecipe;
-          Plan.addInterpolatedVPValue(Instr, SIRecipe);
-        }
-      }
-      R = NextR++;
-
-    }
+    VPlanTransforms::applyInterpolationOnVPBasicBlock(SIVPBB, UserSI, Plan, OrigLoop);
   }
 }
