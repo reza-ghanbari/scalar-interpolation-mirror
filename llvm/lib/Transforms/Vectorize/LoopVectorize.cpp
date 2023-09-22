@@ -57,6 +57,7 @@
 #include "LoopVectorizationPlanner.h"
 #include "VPRecipeBuilder.h"
 #include "VPlan.h"
+#include "ScalarInterpolation.h"
 #include "VPlanHCFGBuilder.h"
 #include "VPlanTransforms.h"
 #include "llvm/ADT/APInt.h"
@@ -9118,6 +9119,10 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   Plan->disableValue2VPValue();
 
   VPlanTransforms::removeDeadRecipes(*Plan);
+  ScalarInterpolationCostModel* InterpolationCM = new ScalarInterpolationCostModel();
+  VPlanPtr CopiedPlan;
+  unsigned ProfitableSI = InterpolationCM->getProfitableScalarInterpolationFactor(*Plan, OrigLoop);
+  errs() << "SI: Here is the profitable SI: " << ProfitableSI << "\n";
   if (UserSI > 0)
     VPlanTransforms::applyInterpolation(*Plan, OrigLoop, UserSI);
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());

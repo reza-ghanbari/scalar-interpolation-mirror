@@ -2583,6 +2583,10 @@ public:
     InterpolatedValue2VPValue[V].push_back(VPV);
   }
 
+  void clearInterpolatedValue2VPValue() {
+    InterpolatedValue2VPValue.clear();
+  }
+
   void setInterpolatedVPValue(Value* V, VPValue* VPV, unsigned Index) {
     assert(V && "Trying to add a null Value to VPlan");
     assert(Index < InterpolatedValue2VPValue[V].size() && "Index out of bounds");
