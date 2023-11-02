@@ -60,6 +60,7 @@ class VPRegionBlock;
 class VPlan;
 class VPReplicateRecipe;
 class VPInterpolateRecipe;
+class VPInterpolatePHIRecipe;
 class VPlanSlp;
 class Value;
 class LoopVersioning;
@@ -243,7 +244,7 @@ struct VPTransformState {
   ElementCount VF;
   unsigned UF;
   unsigned SIFactor;
-
+  unsigned InterpolatedReductionCounter = 0;
   /// Hold the indices to generate specific scalar instructions. Null indicates
   /// that all instances are to be generated, using either scalar or vector
   /// instructions.
@@ -281,6 +282,24 @@ struct VPTransformState {
            I->second[Part];
   }
 
+  bool increaseAndCheckReductionCounter() {
+    return (++InterpolatedReductionCounter == SIFactor);
+  }
+
+  SmallVector<VPInterpolatePHIRecipe*> getAllSimilarInterpolateRecipes(VPInterpolatePHIRecipe* OriginalRecipe) {
+    SmallVector<VPInterpolatePHIRecipe*> SimilarRecipes;
+    auto OriginalPhi = OriginalRecipe->getUnderlyingRecipe()->getUnderlyingInstr();
+    for (auto Item: Data.InterpolatedScalars) {
+      auto* PhiRecipe = dyn_cast<VPInterpolatePHIRecipe>(Item.first);
+      if (PhiRecipe && (PhiRecipe->getUnderlyingRecipe()->getUnderlyingInstr() == OriginalPhi)) {
+          SimilarRecipes.push_back(PhiRecipe);
+          if (SimilarRecipes.size() == SIFactor)
+            return SimilarRecipes;
+      }
+    }
+    return SimilarRecipes;
+  }
+
   bool hasAnyVectorValue(VPValue *Def) const {
     return Data.PerPartOutput.contains(Def);
   }
@@ -299,6 +318,13 @@ struct VPTransformState {
     if (!Data.InterpolatedScalars.count(Def)) {
       Data.InterpolatedScalars[Def] = V;
     }
+  }
+
+  void resetInterpolate(VPValue *Def, Value *V) {
+    auto Iter = Data.InterpolatedScalars.find(Def);
+    assert(Iter != Data.InterpolatedScalars.end() &&
+           "need to overwrite existing value");
+    Iter->second = V;
   }
 
   /// Set the generated Value for a given VPValue and a given Part.
@@ -1321,6 +1347,37 @@ public:
   /// to be a recipe.
   virtual VPRecipeBase &getBackedgeRecipe() {
     return *getBackedgeValue()->getDefiningRecipe();
+  }
+};
+
+class VPInterpolatePHIRecipe : public VPHeaderPHIRecipe {
+  VPHeaderPHIRecipe* UnderlyingRecipe;
+
+public:
+  VPInterpolatePHIRecipe(PHINode *Phi, VPHeaderPHIRecipe* UnderlyingRecipe,
+                       VPValue *Start)
+      : VPHeaderPHIRecipe(VPDef::VPInterpolatePHISC, Phi, Start),
+        UnderlyingRecipe(UnderlyingRecipe) {}
+
+  ~VPInterpolatePHIRecipe() override = default;
+
+  VP_CLASSOF_IMPL(VPDef::VPInterpolatePHISC)
+
+  static inline bool classof(const VPHeaderPHIRecipe *R) {
+    return R->getVPDefID() == VPDef::VPInterpolatePHISC;
+  }
+
+  /// Generate the phi/select nodes.
+  void execute(VPTransformState &State) override;
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+  /// Print the recipe.
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
+#endif
+
+  VPHeaderPHIRecipe* getUnderlyingRecipe() const {
+    return UnderlyingRecipe;
   }
 };
 

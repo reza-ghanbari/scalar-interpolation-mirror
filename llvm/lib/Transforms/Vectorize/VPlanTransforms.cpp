@@ -820,42 +820,56 @@ VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPR
 
 void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
                                          unsigned UserSI) {
+  if (!UserSI) return;
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   VPRecipeBase* InsertionPoint;
+  SmallVector<PHINode*> InterpolatedPhisToFix;
   for (VPBasicBlock *SIVPBB :
        reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
     // The recipes in the block are processed in reverse order, to catch chains
     // of dead recipes.
-    auto R = SIVPBB->begin();
-    if (SIVPBB->begin() == SIVPBB->end())
-      continue;
-    auto NextR = std::next(SIVPBB->begin());
-    while (R != SIVPBB->end()) {
-      Instruction *Instr = getUnderlyingInstructionOfRecipe(*R);
-      if (!Instr) {
-        R = NextR++;
+    for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
+      Instruction *Instr = getUnderlyingInstructionOfRecipe(R);
+      if (!Instr)
         continue;
-      }
       auto *Phi = dyn_cast<PHINode>(Instr);
-      if (UserSI) {
-        SmallVector<VPValue *, 4> SIOperands;
-        if (Phi && Phi->getParent() == OrigLoop->getHeader()) {
-          R = NextR++;
+      if (Phi && Phi->getParent() == OrigLoop->getHeader()) {
+        if (!isa<VPReductionPHIRecipe>(R))
           continue;
-        }
-        InsertionPoint = insertUpdateInstructionsForIV(Plan, Instr, *R, UserSI);
+        InterpolatedPhisToFix.push_back(Phi);
+        auto& ReductionR = cast<VPReductionPHIRecipe>(R);
+        InsertionPoint = &R;
         for (unsigned Index = 0; Index < UserSI; ++Index) {
-          SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
-          auto *SIRecipe = new VPInterpolateRecipe(
-              Instr, make_range(SIOperands.begin(), SIOperands.end()));
+          auto* SIRecipe = new VPInterpolatePHIRecipe(Phi, &ReductionR, ReductionR.getStartValue());
           SIRecipe->insertAfter(InsertionPoint);
           InsertionPoint = SIRecipe;
-          Plan.addInterpolatedVPValue(Instr, SIRecipe);
+          Plan.addInterpolatedVPValue(Phi, SIRecipe);
         }
+        continue;
       }
-      R = NextR++;
-
+      SmallVector<VPValue *, 4> SIOperands;
+      InsertionPoint = insertUpdateInstructionsForIV(Plan, Instr, R, UserSI);
+      for (unsigned Index = 0; Index < UserSI; ++Index) {
+        SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
+        auto *SIRecipe = new VPInterpolateRecipe(
+            Instr, make_range(SIOperands.begin(), SIOperands.end()));
+        SIRecipe->insertAfter(InsertionPoint);
+        InsertionPoint = SIRecipe;
+        Plan.addInterpolatedVPValue(Instr, SIRecipe);
+      }
+    }
+  }
+  for (auto* Phi: InterpolatedPhisToFix) {
+    auto Backedge = Phi->getIncomingValueForBlock(OrigLoop->getLoopLatch());
+    errs() << "Here is the backage and its correspoding interpolated recipe:\n";
+    for (size_t It = 0; It < UserSI; It++)
+    {
+      auto PhiRecipe = cast<VPInterpolatePHIRecipe>(Plan.getInterpolatedVPValue(Phi, It));
+      PhiRecipe->addOperand(Plan.getInterpolatedVPValue(Backedge, It));
+      Plan.getInterpolatedVPValue(Backedge, It)->dump();
+      PhiRecipe->VPDef::dump();
+      errs() << "\n\n\n";
     }
   }
 }

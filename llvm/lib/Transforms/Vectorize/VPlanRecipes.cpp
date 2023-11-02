@@ -1285,6 +1285,24 @@ void VPReductionPHIRecipe::execute(VPTransformState &State) {
   }
 }
 
+void VPInterpolatePHIRecipe::execute(VPTransformState &State) {
+  if (!isa<VPReductionPHIRecipe>(getUnderlyingRecipe())) return;
+  auto* Recipe = dyn_cast<VPReductionPHIRecipe>(getUnderlyingRecipe());
+  PHINode *PN = cast<PHINode>(getUnderlyingValue());
+  Type *VecTy = PN->getType();
+  BasicBlock *HeaderBB = State.CFG.PrevBB;
+  assert(State.CurrentVectorLoop->getHeader() == HeaderBB &&
+         "recipe must be in the vector loop header");
+  Value *EntryPart =
+      PHINode::Create(VecTy, 2, "si.vec.phi", &*HeaderBB->getFirstInsertionPt());
+  State.set(this, EntryPart, 0);
+  BasicBlock *VectorPH = State.CFG.getPreheaderBBFor(this);
+  Value *StartV = getStartValue()->getLiveInIRValue();
+  auto RdxDesc = Recipe->getRecurrenceDescriptor();
+  cast<PHINode>(State.get(this, 0))->addIncoming(StartV, VectorPH);
+  State.setInterpolate(this, cast<PHINode>(State.get(this, 0)));
+}
+
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void VPReductionPHIRecipe::print(raw_ostream &O, const Twine &Indent,
                                  VPSlotTracker &SlotTracker) const {
@@ -1394,5 +1412,15 @@ void VPInterpolateRecipe::print(raw_ostream &O, const Twine &Indent,
     O << Instruction::getOpcodeName(getUnderlyingInstr()->getOpcode()) << " ";
     printOperands(O, SlotTracker);
   }
+}
+#endif
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+void VPInterpolatePHIRecipe::print(raw_ostream &O, const Twine &Indent,
+                                      VPSlotTracker &SlotTracker) const {
+  O << Indent << "INTERPOLATE-PHI ";
+  printAsOperand(O, SlotTracker);
+  O << " = phi ";
+  printOperands(O, SlotTracker);
 }
 #endif
