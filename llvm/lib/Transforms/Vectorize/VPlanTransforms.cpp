@@ -862,14 +862,10 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
   }
   for (auto* Phi: InterpolatedPhisToFix) {
     auto Backedge = Phi->getIncomingValueForBlock(OrigLoop->getLoopLatch());
-    errs() << "Here is the backage and its correspoding interpolated recipe:\n";
     for (size_t It = 0; It < UserSI; It++)
     {
       auto PhiRecipe = cast<VPInterpolatePHIRecipe>(Plan.getInterpolatedVPValue(Phi, It));
       PhiRecipe->addOperand(Plan.getInterpolatedVPValue(Backedge, It));
-      Plan.getInterpolatedVPValue(Backedge, It)->dump();
-      PhiRecipe->VPDef::dump();
-      errs() << "\n\n\n";
     }
   }
 }

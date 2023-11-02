@@ -286,19 +286,7 @@ struct VPTransformState {
     return (++InterpolatedReductionCounter == SIFactor);
   }
 
-  SmallVector<VPInterpolatePHIRecipe*> getAllSimilarInterpolateRecipes(VPInterpolatePHIRecipe* OriginalRecipe) {
-    SmallVector<VPInterpolatePHIRecipe*> SimilarRecipes;
-    auto OriginalPhi = OriginalRecipe->getUnderlyingRecipe()->getUnderlyingInstr();
-    for (auto Item: Data.InterpolatedScalars) {
-      auto* PhiRecipe = dyn_cast<VPInterpolatePHIRecipe>(Item.first);
-      if (PhiRecipe && (PhiRecipe->getUnderlyingRecipe()->getUnderlyingInstr() == OriginalPhi)) {
-          SimilarRecipes.push_back(PhiRecipe);
-          if (SimilarRecipes.size() == SIFactor)
-            return SimilarRecipes;
-      }
-    }
-    return SimilarRecipes;
-  }
+  SmallVector<llvm::VPInterpolatePHIRecipe*> getAllSimilarInterpolateRecipes(VPInterpolatePHIRecipe* OriginalRecipe);
 
   bool hasAnyVectorValue(VPValue *Def) const {
     return Data.PerPartOutput.contains(Def);

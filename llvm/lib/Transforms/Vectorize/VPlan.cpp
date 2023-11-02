@@ -734,7 +734,13 @@ void VPlan::execute(VPTransformState *State) {
                             (isa<VPReductionPHIRecipe>(PhiR) &&
                              cast<VPReductionPHIRecipe>(PhiR)->isOrdered());
     unsigned LastPartForNewPhi = SinglePartNeeded ? 1 : State->UF;
-
+    
+    if (isa<VPInterpolatePHIRecipe>(&R)) {
+      Value *Phi = State->getInterpolateValue(PhiR);
+      Value *Val = State->getInterpolateValue(PhiR->getBackedgeValue());
+      cast<PHINode>(Phi)->addIncoming(Val, VectorLatchBB);
+      continue;
+    }
     for (unsigned Part = 0; Part < LastPartForNewPhi; ++Part) {
       Value *Phi = State->get(PhiR, Part);
       Value *Val = State->get(PhiR->getBackedgeValue(),

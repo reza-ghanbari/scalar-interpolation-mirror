@@ -343,7 +343,6 @@ public:
     VPReductionSC,
     VPReplicateSC,
     VPInterpolateSC,
-    VPInterpolatePHISC,
     VPScalarIVStepsSC,
     VPWidenCallSC,
     VPWidenCanonicalIVSC,
@@ -363,6 +362,7 @@ public:
     VPWidenPHISC,
     VPWidenIntOrFpInductionSC,
     VPWidenPointerInductionSC,
+    VPInterpolatePHISC,
     VPReductionPHISC,
     // END: SubclassID for recipes that inherit VPHeaderPHIRecipe
     // END: Phi-like recipes

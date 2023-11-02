@@ -612,7 +612,7 @@ protected:
                                VPTransformState &State);
 
   /// Create code for the loop exit value of the interpolated Phi recipe.
-  void fixInterpolatedPhi(VPReductionPHIRecipe *Phi, VPTransformState &State);
+  void fixInterpolatedPhi(VPInterpolatePHIRecipe *Phi, VPTransformState &State);
 
   /// Create code for the loop exit value of the reduction.
   void fixReduction(VPReductionPHIRecipe *Phi, VPTransformState &State);
@@ -695,7 +695,7 @@ protected:
                                     Value *Src,
                                     Value* Dst,
                                     PHINode *OrigPhi,
-                                    const Twine &Suffix = ""
+                                    const Twine &Suffix
                                     );
 
   /// The original loop.
@@ -3771,7 +3771,6 @@ void InnerLoopVectorizer::fixVectorizedLoop(VPTransformState &State,
         }
 
       }
-//      errs() << "SI: Here is one entry: " << *Entry.first << "\n";
     }
   }
 
@@ -3871,15 +3870,15 @@ Value* InnerLoopVectorizer::createInterpolateReduction(IRBuilderBase &Builder,
   case RecurKind::FMul:
     return Builder.CreateFMul(Src, Dst, Twine("si.rdx.fmul") + Suffix);
   case RecurKind::SMax:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::smax, Src, Dst, Twine("si.rdx.smax") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::smax, Src, Dst, nullptr, Twine("si.rdx.smax") + Suffix);
   case RecurKind::UMax:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::umax, Src, Dst, Twine("si.rdx.umax") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::umax, Src, Dst, nullptr, Twine("si.rdx.umax") + Suffix);
   case RecurKind::FMax:
     return Builder.CreateMaximum(Src, Dst, Twine("si.rdx.fmax") + Suffix);
   case RecurKind::SMin:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst, Twine("si.rdx.smin") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst, nullptr, Twine("si.rdx.smin") + Suffix);
   case RecurKind::UMin:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst, Twine("si.rdx.umin") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst, nullptr, Twine("si.rdx.umin") + Suffix);
   case RecurKind::FMin:
     return Builder.CreateMinimum(Src, Dst, Twine("si.rdx.fmin") + Suffix);
   default:
@@ -3890,24 +3889,18 @@ Value* InnerLoopVectorizer::createInterpolateReduction(IRBuilderBase &Builder,
 
 void InnerLoopVectorizer::fixInterpolatedPhi(VPInterpolatePHIRecipe *PhiR,
                                        VPTransformState &State) {
-  errs() << "SI: Here we are going to fix the interpolated Phi\n\n\n\n\n";
-  PhiR->dump();
-  auto* UnderlyingReduction = dyn_cast<VPInterpolatePHIRecipe>(PhiR->getUnderlyingRecipe());
+  auto* UnderlyingReduction = dyn_cast<VPReductionPHIRecipe>(PhiR->getUnderlyingRecipe());
   if (!UnderlyingReduction) return;
   PHINode *OrigPhi = cast<PHINode>(PhiR->getUnderlyingValue());
   // Get it's reduction variable descriptor.
   assert(Legal->isReductionVariable(OrigPhi) &&
          "Unable to find the reduction variable");
   const RecurrenceDescriptor &RdxDesc = UnderlyingReduction->getRecurrenceDescriptor();
-  RecurKind RK = RdxDesc.getRecurrenceKind();
   TrackingVH<Value> ReductionStartValue = RdxDesc.getRecurrenceStartValue();
   Instruction *LoopExitInst = RdxDesc.getLoopExitInstr();
   State.setDebugLocFromInst(ReductionStartValue);
 
   VPValue *LoopExitInstDef = PhiR->getBackedgeValue();
-  // This is the vector-clone of the value that leaves the loop.
-  Type *VecTy = State.getInterpolateValue(LoopExitInstDef)->getType();
-
   // Before each round, move the insertion point right between
   // the PHIs and the values we are going to write.
   // This allows us to write both PHINodes and the extractelement
@@ -3960,12 +3953,12 @@ void InnerLoopVectorizer::fixInterpolatedPhi(VPInterpolatePHIRecipe *PhiR,
   // we should do it only in one reduction and not the rest of them.
   if (!State.increaseAndCheckReductionCounter())
     return;
-  if (PhiR->isInLoop())
+  if (UnderlyingReduction->isInLoop())
     return;
 
   auto AllInterpolatedReductions = State.getAllSimilarInterpolateRecipes(PhiR);
   Value *ReducedRdx = State.getInterpolateValue(AllInterpolatedReductions[0]->getBackedgeValue());
-  for (size_t It = 0; It < AllInterpolatedReductions.size(); ++It) {
+  for (size_t It = 1; It < AllInterpolatedReductions.size(); ++It) {
     Value *Dst = State.getInterpolateValue(AllInterpolatedReductions[It]->getBackedgeValue());
     ReducedRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, Dst, OrigPhi, Twine(It + 1));
   }
@@ -3976,72 +3969,13 @@ void InnerLoopVectorizer::fixInterpolatedPhi(VPInterpolatePHIRecipe *PhiR,
   Value* VectorRdx = nullptr;
   for (PHINode& Phi: LoopScalarPreHeader->phis()) {
     if (Phi.getBasicBlockIndex(LoopMiddleBlock) != -1) {
-      VectorRdx = getIncomingValueForBlock(LoopMiddleBlock);
+      VectorRdx = Phi.getIncomingValueForBlock(LoopMiddleBlock);
     }
   }
-  auto* FinalRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, VectorRdx, OrigPhi, Twine("combine"))
-  VectorRdx->replaceAllUsesWith(FinalRdx);
- 
-/*
-  PHINode *ResumePhi =
-      dyn_cast<PHINode>(PhiR->getStartValue()->getUnderlyingValue());
-
-  // Create a phi node that merges control-flow from the backedge-taken check
-  // block and the middle block.
-  PHINode *BCBlockPhi = PHINode::Create(PhiTy, 2, "bc.merge.rdx",
-                                        LoopScalarPreHeader->getTerminator());
-
-  // If we are fixing reductions in the epilogue loop then we should already
-  // have created a bc.merge.rdx Phi after the main vector body. Ensure that
-  // we carry over the incoming values correctly.
-  for (auto *Incoming : predecessors(LoopScalarPreHeader)) {
-    if (Incoming == LoopMiddleBlock)
-      BCBlockPhi->addIncoming(ReducedPartRdx, Incoming);
-    else if (ResumePhi && llvm::is_contained(ResumePhi->blocks(), Incoming))
-      BCBlockPhi->addIncoming(ResumePhi->getIncomingValueForBlock(Incoming),
-                              Incoming);
-    else
-      BCBlockPhi->addIncoming(ReductionStartValue, Incoming);
-  }
-
-  // Set the resume value for this reduction
-  ReductionResumeValues.insert({&RdxDesc, BCBlockPhi});
-
-  // If there were stores of the reduction value to a uniform memory address
-  // inside the loop, create the final store here.
-  if (StoreInst *SI = RdxDesc.IntermediateStore) {
-    StoreInst *NewSI =
-        Builder.CreateStore(ReducedPartRdx, SI->getPointerOperand());
-    propagateMetadata(NewSI, SI);
-
-    // If the reduction value is used in other places,
-    // then let the code below create PHI's for that.
-  }
-
-  // Now, we need to fix the users of the reduction variable
-  // inside and outside of the scalar remainder loop.
-
-  // We know that the loop is in LCSSA form. We need to update the PHI nodes
-  // in the exit blocks.  See comment on analogous loop in
-  // fixFixedOrderRecurrence for a more complete explaination of the logic.
-  if (!Cost->requiresScalarEpilogue(VF))
-    for (PHINode &LCSSAPhi : LoopExitBlock->phis())
-      if (llvm::is_contained(LCSSAPhi.incoming_values(), LoopExitInst)) {
-        LCSSAPhi.addIncoming(ReducedPartRdx, LoopMiddleBlock);
-        State.Plan->removeLiveOut(&LCSSAPhi);
-      }
-
-  // Fix the scalar loop reduction variable with the incoming reduction sum
-  // from the vector body and from the backedge value.
-  int IncomingEdgeBlockIdx =
-      OrigPhi->getBasicBlockIndex(OrigLoop->getLoopLatch());
-  assert(IncomingEdgeBlockIdx >= 0 && "Invalid block index");
-  // Pick the other block.
-  int SelfEdgeBlockIdx = (IncomingEdgeBlockIdx ? 0 : 1);
-  OrigPhi->setIncomingValue(SelfEdgeBlockIdx, BCBlockPhi);
-  OrigPhi->setIncomingValue(IncomingEdgeBlockIdx, LoopExitInst);
-*/
-
+  LoopMiddleBlock->dump();
+  Builder.SetInsertPoint(cast<Instruction>(VectorRdx)->getNextNode());
+  auto* FinalRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, VectorRdx, OrigPhi, Twine("combine"));
+  VectorRdx->replaceUsesWithIf(FinalRdx, [FinalRdx](Use& U) { return U.getUser() != FinalRdx; });
 }
 
 void InnerLoopVectorizer::fixFixedOrderRecurrence(
@@ -9305,8 +9239,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   VPlanTransforms::removeRedundantCanonicalIVs(*Plan);
   VPlanTransforms::removeRedundantInductionCasts(*Plan);
   // VPlanTransforms::removeDeadRecipes(*Plan);
-  // if (UserSI > 0)
-  //   VPlanTransforms::applyInterpolation(*Plan, OrigLoop, UserSI);
+  // VPlanTransforms::applyInterpolation(*Plan, OrigLoop, UserSI);
 
   // Adjust the recipes for any inloop reductions.
   adjustRecipesForReductions(cast<VPBasicBlock>(TopRegion->getExiting()), Plan,
@@ -9415,13 +9348,8 @@ VPlanPtr LoopVectorizationPlanner::buildVPlan(VFRange &Range) {
 void LoopVectorizationPlanner::adjustRecipesForReductions(
     VPBasicBlock *LatchVPBB, VPlanPtr &Plan, VPRecipeBuilder &RecipeBuilder,
     ElementCount MinVF) {
-  errs() << "SI: Here inside adjustRecipesForReductions\n" 
-    << CM.getInLoopReductionChains().size() << "\n\n";
   for (const auto &Reduction : CM.getInLoopReductionChains()) {
     PHINode *Phi = Reduction.first;
-    errs() << "SI: Here inside reduction for loop, found the following phi node:\n";
-    Phi->dump();
-    errs() << "\n\n\n\n\n";
     const RecurrenceDescriptor &RdxDesc =
         Legal->getReductionVars().find(Phi)->second;
     const SmallVector<Instruction *, 4> &ReductionOperations = Reduction.second;
@@ -9434,13 +9362,7 @@ void LoopVectorizationPlanner::adjustRecipesForReductions(
     // which of the two operands will remain scalar and which will be reduced.
     // For minmax the chain will be the select instructions.
     Instruction *Chain = Phi;
-    errs() << "SI: Here is the chain: \n";
-    Chain->dump();
-    errs() << "\n\n\n\n";
     for (Instruction *R : ReductionOperations) {
-      errs() << "SI: Here is the R in Reduction Operations: \n";
-    Chain->dump();
-    errs() << "\n\n\n\n";
       VPRecipeBase *WidenRecipe = RecipeBuilder.getRecipe(R);
       RecurKind Kind = RdxDesc.getRecurrenceKind();
 
@@ -10149,6 +10071,20 @@ Value *VPTransformState::getInterpolateValue(VPValue *Def) {
     return get(Def, VPIteration(Part, Lane));
   assert(false && "Interpolated value is either using a vector or does not exist");
 }
+
+SmallVector<llvm::VPInterpolatePHIRecipe*> VPTransformState::getAllSimilarInterpolateRecipes(VPInterpolatePHIRecipe* OriginalRecipe) {
+    SmallVector<llvm::VPInterpolatePHIRecipe*> SimilarRecipes;
+    auto OriginalPhi = OriginalRecipe->getUnderlyingRecipe()->getUnderlyingInstr();
+    for (auto Item: Data.InterpolatedScalars) {
+      auto* PhiRecipe = dyn_cast<VPInterpolatePHIRecipe>(Item.first);
+      if (PhiRecipe && (PhiRecipe->getUnderlyingRecipe()->getUnderlyingInstr() == OriginalPhi)) {
+          SimilarRecipes.push_back(PhiRecipe);
+          if (SimilarRecipes.size() == SIFactor)
+            return SimilarRecipes;
+      }
+    }
+    return SimilarRecipes;
+  }
 
 Value *VPTransformState::get(VPValue *Def, unsigned Part) {
   // If Values have been set for this Def return the one relevant for \p Part.

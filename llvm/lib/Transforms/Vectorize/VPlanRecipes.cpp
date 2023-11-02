@@ -1293,14 +1293,13 @@ void VPInterpolatePHIRecipe::execute(VPTransformState &State) {
   BasicBlock *HeaderBB = State.CFG.PrevBB;
   assert(State.CurrentVectorLoop->getHeader() == HeaderBB &&
          "recipe must be in the vector loop header");
-  Value *EntryPart =
+  PHINode *EntryPart =
       PHINode::Create(VecTy, 2, "si.vec.phi", &*HeaderBB->getFirstInsertionPt());
-  State.set(this, EntryPart, 0);
   BasicBlock *VectorPH = State.CFG.getPreheaderBBFor(this);
-  Value *StartV = getStartValue()->getLiveInIRValue();
+  Value *StartV = ConstantInt::get(getStartValue()->getLiveInIRValue()->getType(), 0);
   auto RdxDesc = Recipe->getRecurrenceDescriptor();
-  cast<PHINode>(State.get(this, 0))->addIncoming(StartV, VectorPH);
-  State.setInterpolate(this, cast<PHINode>(State.get(this, 0)));
+  EntryPart->addIncoming(StartV, VectorPH);
+  State.setInterpolate(this, EntryPart);
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
