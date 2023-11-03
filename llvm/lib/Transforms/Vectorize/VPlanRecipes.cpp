@@ -1287,17 +1287,21 @@ void VPReductionPHIRecipe::execute(VPTransformState &State) {
 
 void VPInterpolatePHIRecipe::execute(VPTransformState &State) {
   if (!isa<VPReductionPHIRecipe>(getUnderlyingRecipe())) return;
-  auto* Recipe = dyn_cast<VPReductionPHIRecipe>(getUnderlyingRecipe());
-  PHINode *PN = cast<PHINode>(getUnderlyingValue());
-  Type *VecTy = PN->getType();
+  auto RdxDesc = dyn_cast<VPReductionPHIRecipe>(getUnderlyingRecipe())
+                  ->getRecurrenceDescriptor();
+  Type *Ty = cast<PHINode>(getUnderlyingValue())->getType();
   BasicBlock *HeaderBB = State.CFG.PrevBB;
   assert(State.CurrentVectorLoop->getHeader() == HeaderBB &&
          "recipe must be in the vector loop header");
   PHINode *EntryPart =
-      PHINode::Create(VecTy, 2, "si.vec.phi", &*HeaderBB->getFirstInsertionPt());
+      PHINode::Create(Ty, 2, "si.vec.phi", &*HeaderBB->getFirstInsertionPt());
   BasicBlock *VectorPH = State.CFG.getPreheaderBBFor(this);
-  Value *StartV = ConstantInt::get(getStartValue()->getLiveInIRValue()->getType(), 0);
-  auto RdxDesc = Recipe->getRecurrenceDescriptor();
+  RecurKind RK = RdxDesc.getRecurrenceKind();
+  Value *StartV = getStartValue()->getLiveInIRValue();
+  if (!(RecurrenceDescriptor::isMinMaxRecurrenceKind(RK) ||
+      RecurrenceDescriptor::isSelectCmpRecurrenceKind(RK))) {
+    StartV = RdxDesc.getRecurrenceIdentity(RK, Ty, RdxDesc.getFastMathFlags());
+  }
   EntryPart->addIncoming(StartV, VectorPH);
   State.setInterpolate(this, EntryPart);
 }

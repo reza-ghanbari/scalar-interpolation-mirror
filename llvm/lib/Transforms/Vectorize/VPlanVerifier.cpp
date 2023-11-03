@@ -207,7 +207,7 @@ static bool verifyVPBasicBlock(const VPBasicBlock *VPBB,
       for (const VPUser *U : V->users()) {
         auto *UI = dyn_cast<VPRecipeBase>(U);
         // TODO: check dominance of incoming values for phis properly.
-        if (!UI || isa<VPHeaderPHIRecipe>(UI) || isa<VPInterpolatePHIRecipe>(UI) || isa<VPPredInstPHIRecipe>(UI))
+        if (!UI || isa<VPHeaderPHIRecipe>(UI) || isa<VPPredInstPHIRecipe>(UI))
           continue;
 
         // If the user is in the same block, check it comes after R in the

@@ -694,8 +694,7 @@ protected:
                                     const RecurrenceDescriptor &Desc, 
                                     Value *Src,
                                     Value* Dst,
-                                    PHINode *OrigPhi,
-                                    const Twine &Suffix
+                                    PHINode *OrigPhi
                                     );
 
   /// The original loop.
@@ -3827,8 +3826,7 @@ Value* InnerLoopVectorizer::createInterpolateReduction(IRBuilderBase &Builder,
                                    const RecurrenceDescriptor &Desc, 
                                    Value *Src,
                                    Value* Dst,
-                                   PHINode *OrigPhi,
-                                   const Twine &Suffix = ""
+                                   PHINode *OrigPhi
                                    ) {
   IRBuilderBase::FastMathFlagGuard FMFGuard(Builder);
   Builder.setFastMathFlags(Desc.getFastMathFlags());
@@ -3850,37 +3848,37 @@ Value* InnerLoopVectorizer::createInterpolateReduction(IRBuilderBase &Builder,
       NewVal = SI->getTrueValue();
     }
     Value *Cmp =
-      Builder.CreateCmp(CmpInst::ICMP_NE, Src, InitVal, "si.rdx.select.cmp");
-    return Builder.CreateSelect(Cmp, NewVal, InitVal, "si.rdx.select");
+      Builder.CreateCmp(CmpInst::ICMP_NE, Src, InitVal);
+    return Builder.CreateSelect(Cmp, NewVal, InitVal);
   }
   switch (RK) {
   case RecurKind::Add:
-    return Builder.CreateAdd(Src, Dst, Twine("si.rdx.add") + Suffix);
+    return Builder.CreateAdd(Src, Dst);
   case RecurKind::Mul:
-    return Builder.CreateMul(Src, Dst, Twine("si.rdx.mul") + Suffix);
+    return Builder.CreateMul(Src, Dst);
   case RecurKind::And:
-    return Builder.CreateAnd(Src, Dst, Twine("si.rdx.and") + Suffix);
+    return Builder.CreateAnd(Src, Dst);
   case RecurKind::Or:
-    return Builder.CreateOr(Src, Dst, Twine("si.rdx.or") + Suffix);
+    return Builder.CreateOr(Src, Dst);
   case RecurKind::Xor:
-    return Builder.CreateXor(Src, Dst, Twine("si.rdx.xor") + Suffix);
+    return Builder.CreateXor(Src, Dst);
   case RecurKind::FMulAdd:
   case RecurKind::FAdd:
-    return Builder.CreateFAdd(Src, Dst, Twine("si.rdx.fadd") + Suffix);
+    return Builder.CreateFAdd(Src, Dst);
   case RecurKind::FMul:
-    return Builder.CreateFMul(Src, Dst, Twine("si.rdx.fmul") + Suffix);
+    return Builder.CreateFMul(Src, Dst);
   case RecurKind::SMax:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::smax, Src, Dst, nullptr, Twine("si.rdx.smax") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::smax, Src, Dst);
   case RecurKind::UMax:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::umax, Src, Dst, nullptr, Twine("si.rdx.umax") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::umax, Src, Dst);
   case RecurKind::FMax:
-    return Builder.CreateMaximum(Src, Dst, Twine("si.rdx.fmax") + Suffix);
+    return Builder.CreateMaximum(Src, Dst);
   case RecurKind::SMin:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst, nullptr, Twine("si.rdx.smin") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst);
   case RecurKind::UMin:
-    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst, nullptr, Twine("si.rdx.umin") + Suffix);
+    return Builder.CreateBinaryIntrinsic(Intrinsic::smin, Src, Dst);
   case RecurKind::FMin:
-    return Builder.CreateMinimum(Src, Dst, Twine("si.rdx.fmin") + Suffix);
+    return Builder.CreateMinimum(Src, Dst);
   default:
     llvm_unreachable("Unhandled opcode");
   }
@@ -3960,7 +3958,7 @@ void InnerLoopVectorizer::fixInterpolatedPhi(VPInterpolatePHIRecipe *PhiR,
   Value *ReducedRdx = State.getInterpolateValue(AllInterpolatedReductions[0]->getBackedgeValue());
   for (size_t It = 1; It < AllInterpolatedReductions.size(); ++It) {
     Value *Dst = State.getInterpolateValue(AllInterpolatedReductions[It]->getBackedgeValue());
-    ReducedRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, Dst, OrigPhi, Twine(It + 1));
+    ReducedRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, Dst, OrigPhi);
   }
 // The following computations is true only when the original reduction is already 
 // generated.
@@ -3974,7 +3972,7 @@ void InnerLoopVectorizer::fixInterpolatedPhi(VPInterpolatePHIRecipe *PhiR,
   }
   LoopMiddleBlock->dump();
   Builder.SetInsertPoint(cast<Instruction>(VectorRdx)->getNextNode());
-  auto* FinalRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, VectorRdx, OrigPhi, Twine("combine"));
+  auto* FinalRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, VectorRdx, OrigPhi);
   VectorRdx->replaceUsesWithIf(FinalRdx, [FinalRdx](Use& U) { return U.getUser() != FinalRdx; });
 }
 
