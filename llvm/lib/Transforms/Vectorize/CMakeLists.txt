@@ -11,6 +11,7 @@ add_llvm_component_library(LLVMVectorize
   VPlanSLP.cpp
   VPlanTransforms.cpp
   VPlanVerifier.cpp
+  ScalarInterpolation.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms

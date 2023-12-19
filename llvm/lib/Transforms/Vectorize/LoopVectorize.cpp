@@ -57,6 +57,7 @@
 #include "LoopVectorizationPlanner.h"
 #include "VPRecipeBuilder.h"
 #include "VPlan.h"
+#include "ScalarInterpolation.h"
 #include "VPlanHCFGBuilder.h"
 #include "VPlanTransforms.h"
 #include "llvm/ADT/APInt.h"
@@ -9236,8 +9237,6 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
 
   VPlanTransforms::removeRedundantCanonicalIVs(*Plan);
   VPlanTransforms::removeRedundantInductionCasts(*Plan);
-  // VPlanTransforms::removeDeadRecipes(*Plan);
-  // VPlanTransforms::applyInterpolation(*Plan, OrigLoop, UserSI);
 
   // Adjust the recipes for any inloop reductions.
   adjustRecipesForReductions(cast<VPBasicBlock>(TopRegion->getExiting()), Plan,
@@ -9289,7 +9288,10 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   Plan->disableValue2VPValue();
 
   VPlanTransforms::removeDeadRecipes(*Plan);
-  VPlanTransforms::applyInterpolation(*Plan, OrigLoop, UserSI);
+  ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel();
+  unsigned ProfitableSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI);
+  if (ProfitableSI > 0)
+    VPlanTransforms::applyInterpolation(*Plan, OrigLoop, ProfitableSI);
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
   VPlanTransforms::removeDeadRecipes(*Plan);
 
