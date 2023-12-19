@@ -795,7 +795,6 @@ VPRecipeBase *insertConstantIVModifier(VPlan &Plan,
 
 VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R, unsigned UserSI) {
   auto WideIVs = getWidenInductionVariable(Plan);
-  assert(WideIVs.size() && "No wide induction variable found");
   VPRecipeBase* InsertionPoint = &R;
   for (auto& WideIV: WideIVs) {
     auto *WideIVUnderlyingValue = WideIV->getUnderlyingValue();
