@@ -3971,7 +3971,6 @@ void InnerLoopVectorizer::fixInterpolatedPhi(VPInterpolatePHIRecipe *PhiR,
       VectorRdx = Phi.getIncomingValueForBlock(LoopMiddleBlock);
     }
   }
-  LoopMiddleBlock->dump();
   Builder.SetInsertPoint(cast<Instruction>(VectorRdx)->getNextNode());
   auto* FinalRdx = createInterpolateReduction(Builder, RdxDesc, ReducedRdx, VectorRdx, OrigPhi);
   VectorRdx->replaceUsesWithIf(FinalRdx, [FinalRdx](Use& U) { return U.getUser() != FinalRdx; });

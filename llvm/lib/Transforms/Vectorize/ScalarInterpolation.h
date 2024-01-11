@@ -13,6 +13,8 @@ class ScalarInterpolationCostModel {
 public:
   ScalarInterpolationCostModel() {};
 
+  bool hasInterleavingGroups(VPlan& Plan);
+
   unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI);
 };
 
