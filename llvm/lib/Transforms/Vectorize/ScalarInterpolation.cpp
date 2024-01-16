@@ -13,8 +13,13 @@ bool ScalarInterpolationCostModel::hasInterleavingGroups(llvm::VPlan &Plan) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   for (VPBasicBlock *VPBB: reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
-    if (any_of(*VPBB, [](VPRecipeBase &R) { return isa<VPInterleaveRecipe>(&R); }))
+    if (any_of(*VPBB, [&](VPRecipeBase &R) {
+          return any_of(NonInterpolatableRecipes, [&R](VPDef::VPRecipeTy &NIR) {
+                return R.getVPDefID() == NIR;
+              });
+        })) {
       return true;
+    }
   }
   return false;
 }
