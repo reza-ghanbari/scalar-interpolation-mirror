@@ -21,7 +21,7 @@ private:
 public:
   ScalarInterpolationCostModel() {};
 
-  bool hasInterleavingGroups(VPlan& Plan);
+  bool hasNonInterpolatableRecipe(VPlan& Plan);
 
   bool containsNonInterpolatableRecipe(VPlan& Plan);
 

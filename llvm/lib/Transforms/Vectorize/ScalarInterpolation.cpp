@@ -9,7 +9,7 @@
 
 using namespace llvm;
 
-bool ScalarInterpolationCostModel::hasInterleavingGroups(llvm::VPlan &Plan) {
+bool ScalarInterpolationCostModel::hasNonInterpolatableRecipe(llvm::VPlan &Plan) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   for (VPBasicBlock *VPBB: reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
@@ -26,11 +26,9 @@ bool ScalarInterpolationCostModel::hasInterleavingGroups(llvm::VPlan &Plan) {
 
 unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *OrigLoop, unsigned UserSI) {
   auto *VectorLoopRegion = Plan.getVectorLoopRegion();
-  if (hasInterleavingGroups(Plan)) {
+  if (hasNonInterpolatableRecipe(Plan)) {
     return 0;
   }
-  errs() << "\n\n\n============================================\n\n\n";
-  VectorLoopRegion->dump();
-  errs() << "\n\n\n============================================\nEndSI";
+//  TODO: develop the cost model here.
   return UserSI;
 }
