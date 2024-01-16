@@ -2494,6 +2494,8 @@ class VPlan {
   /// any UF.
   SmallSetVector<unsigned, 2> UFs;
 
+  unsigned SIF;
+
   /// Holds the name of the VPlan, for printing.
   std::string Name;
 
@@ -2609,6 +2611,14 @@ public:
     assert(hasUF(UF) && "Cannot set the UF not already in plan");
     UFs.clear();
     UFs.insert(UF);
+  }
+
+  void setSIF(unsigned SIFactor) {
+    SIF = SIFactor;
+  }
+
+  unsigned getSIF() const {
+    return SIF;
   }
 
   /// Return a string with the name of the plan and the applicable VFs and UFs.

@@ -607,6 +607,9 @@ protected:
   /// Handle all cross-iteration phis in the header.
   void fixCrossIterationPHIs(VPTransformState &State);
 
+  /// Handle extra instructions generated during scalar interpolation.
+  void removeScalarInterpolationFootprint(VPTransformState &State, VPlan &Plan);
+
   /// Create the exit value of first order recurrences in the middle block and
   /// update their users.
   void fixFixedOrderRecurrence(VPFirstOrderRecurrencePHIRecipe *PhiR,
@@ -3588,6 +3591,39 @@ static Type *largestIntegerVectorType(Type *T1, Type *T2) {
   return I1->getBitWidth() > I2->getBitWidth() ? T1 : T2;
 }
 
+void InnerLoopVectorizer::removeScalarInterpolationFootprint(VPTransformState &State,
+                                                             VPlan &Plan) {
+  for (const auto &Entry : Legal->getInductionVars()) {
+    for (auto User: Entry.first->users()) {
+      auto *Instr = cast<Instruction>(User);
+      auto* AnnotationNode = Instr->getMetadata(LLVMContext::MD_annotation);
+      if (!AnnotationNode)
+        continue;
+      auto *Tuple = cast<MDTuple>(AnnotationNode);
+      // remove temp add instruction used in the recipe.
+      if (!Instr->getParent()) {
+        if (std::any_of(Tuple->operands().begin(), Tuple->operands().end(), [](const MDOperand& MD) {
+          return isa<MDString>(MD) && cast<MDString>(MD)->getString() == "scalar.interpolation";
+        })) {
+          User->dropAllReferences();
+        }
+        continue;
+      }
+      // remove 'scalar.interpolation' from the metadata
+      SmallVector<Metadata *, 4> Names;
+      for (auto &N : Tuple->operands()) {
+        if (isa<MDString>(N.get()) &&
+            cast<MDString>(N.get())->getString() == "scalar.interpolation") {
+          continue;
+        }
+        Names.push_back(N.get());
+      }
+      MDNode *MD = MDTuple::get(Instr->getContext(), Names);
+      Instr->setMetadata(LLVMContext::MD_annotation, MD);
+    }
+  }
+}
+
 void InnerLoopVectorizer::truncateToMinimalBitwidths(VPTransformState &State) {
   // For every instruction `I` in MinBWs, truncate the operands, create a
   // truncated version of `I` and reextend its result. InstCombine runs
@@ -3762,17 +3798,8 @@ void InnerLoopVectorizer::fixVectorizedLoop(VPTransformState &State,
                    IVEndValues[Entry.first], LoopMiddleBlock,
                    VectorLoop->getHeader(), Plan, State);
   }
-  if (ScalarInterpolationFactor > 0) {
-    // Fix-up external users of the induction variables.
-    for (const auto &Entry : Legal->getInductionVars()) {
-      for (auto User: Entry.first->users()) {
-        if (!cast<Instruction>(User)->getParent()) {
-          User->dropAllReferences();
-        }
-
-      }
-    }
-  }
+  // Fix-up external users of the induction variables.
+  removeScalarInterpolationFootprint(State, Plan);
 
   // Fix LCSSA phis not already fixed earlier. Extracts may need to be generated
   // in the exit block, so update the builder.
@@ -9288,9 +9315,11 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
 
   VPlanTransforms::removeDeadRecipes(*Plan);
   ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel();
-  unsigned ProfitableSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI);
-  if (ProfitableSI > 0)
-    VPlanTransforms::applyInterpolation(*Plan, OrigLoop, ProfitableSI);
+  UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI);
+  Plan->setSIF(UserSI);
+  Hints.getScalarInterpolation();
+  if (UserSI > 0)
+    VPlanTransforms::applyInterpolation(*Plan, OrigLoop);
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
   VPlanTransforms::removeDeadRecipes(*Plan);
 
@@ -10764,8 +10793,12 @@ bool LoopVectorizePass::processLoop(Loop *L) {
         InnerLoopVectorizer LB(L, PSE, LI, DT, TLI, TTI, AC, ORE, VF.Width,
                                VF.MinProfitableTripCount, IC, &LVL, &CM, BFI,
                                PSI, Checks);
-        LB.setScalarInterpolationFactor(UserSI);
         VPlan &BestPlan = LVP.getBestPlanFor(VF.Width);
+        UserSI = BestPlan.getSIF();
+        errs() << "and this is the best VPLAN:\n\n\n";
+        BestPlan.print(errs());
+        errs() << "\n\n\n";
+        LB.setScalarInterpolationFactor(UserSI);
         LVP.executePlan(VF.Width, IC, BestPlan, LB, DT, false);
         ++LoopsVectorized;
 

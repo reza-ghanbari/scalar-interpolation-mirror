@@ -819,13 +819,14 @@ std::string VPlan::getName() const {
   }
 
   if (UFs.empty()) {
-    RSO << "UF>=1";
+    RSO << "UF>=1,";
   } else {
     RSO << "UF={" << UFs[0];
     for (unsigned UF : drop_begin(UFs))
       RSO << "," << UF;
-    RSO << "}";
+    RSO << "},";
   }
+  RSO << "SIF=" << SIF;
 
   return Out;
 }

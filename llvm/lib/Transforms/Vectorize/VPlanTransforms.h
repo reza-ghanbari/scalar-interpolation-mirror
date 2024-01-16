@@ -87,7 +87,7 @@ struct VPlanTransforms {
                                  unsigned BestUF,
                                  PredicatedScalarEvolution &PSE);
 
-  static void applyInterpolation(VPlan &Plan, Loop *OrigLoop, unsigned UserSI);
+  static void applyInterpolation(VPlan &Plan, Loop *OrigLoop);
 };
 
 } // namespace llvm

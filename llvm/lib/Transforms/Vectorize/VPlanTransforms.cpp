@@ -783,6 +783,7 @@ VPRecipeBase *insertConstantIVModifier(VPlan &Plan,
   Value *ConstantAddedValue =
       ConstantInt::get(WideIVUnderlyingValue->getType(), It * Step, false);
   Instruction *TempAdd = BinaryOperator::Create(Instruction::Add, WideIVUnderlyingValue, ConstantAddedValue, Twine("temp.add.").concat(Twine(It)));
+  TempAdd->addAnnotationMetadata("scalar.interpolation");
   SIOperands.push_back(WideIV);
   SIOperands.push_back(new VPValue(ConstantAddedValue));
   auto *TempAddRecipe = new VPInterpolateRecipe(TempAdd, make_range(SIOperands.begin(), SIOperands.end()));
@@ -793,7 +794,7 @@ VPRecipeBase *insertConstantIVModifier(VPlan &Plan,
   return InsertionPoint;
 }
 
-VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R, unsigned UserSI) {
+VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPRecipeBase &R) {
   auto WideIVs = getWidenInductionVariable(Plan);
   VPRecipeBase* InsertionPoint = &R;
   for (auto& WideIV: WideIVs) {
@@ -806,7 +807,7 @@ VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPR
           if (auto *StepValue = dyn_cast<ConstantInt>(WideIV->getStepValue()->getUnderlyingValue())) {
             Step = StepValue->getSExtValue();
           }
-          for (unsigned It = 1; It <= UserSI; ++It) {
+          for (unsigned It = 1; It <= Plan.getSIF(); ++It) {
             InsertionPoint = insertConstantIVModifier(Plan, WideIV, InsertionPoint, WideIVUnderlyingValue, Step, It);
           }
         }
@@ -817,9 +818,9 @@ VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPR
   return InsertionPoint;
 }
 
-void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
-                                         unsigned UserSI) {
-  if (!UserSI) return;
+void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop) {
+  unsigned SIF = Plan.getSIF();
+  if (!SIF) return;
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   VPRecipeBase* InsertionPoint;
@@ -839,7 +840,7 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
         InterpolatedPhisToFix.push_back(Phi);
         auto& ReductionR = cast<VPReductionPHIRecipe>(R);
         InsertionPoint = &R;
-        for (unsigned Index = 0; Index < UserSI; ++Index) {
+        for (unsigned Index = 0; Index < SIF; ++Index) {
           auto* SIRecipe = new VPInterpolatePHIRecipe(Phi, &ReductionR, ReductionR.getStartValue());
           SIRecipe->insertAfter(InsertionPoint);
           InsertionPoint = SIRecipe;
@@ -848,8 +849,8 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
         continue;
       }
       SmallVector<VPValue *, 4> SIOperands;
-      InsertionPoint = insertUpdateInstructionsForIV(Plan, Instr, R, UserSI);
-      for (unsigned Index = 0; Index < UserSI; ++Index) {
+      InsertionPoint = insertUpdateInstructionsForIV(Plan, Instr, R);
+      for (unsigned Index = 0; Index < SIF; ++Index) {
         SIOperands = Plan.mapToInterpolatedVPValues(Instr->operands(), Index);
         auto *SIRecipe = new VPInterpolateRecipe(
             Instr, make_range(SIOperands.begin(), SIOperands.end()));
@@ -861,7 +862,7 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop,
   }
   for (auto* Phi: InterpolatedPhisToFix) {
     auto Backedge = Phi->getIncomingValueForBlock(OrigLoop->getLoopLatch());
-    for (size_t It = 0; It < UserSI; It++)
+    for (size_t It = 0; It < SIF; It++)
     {
       auto PhiRecipe = cast<VPInterpolatePHIRecipe>(Plan.getInterpolatedVPValue(Phi, It));
       PhiRecipe->addOperand(Plan.getInterpolatedVPValue(Backedge, It));
