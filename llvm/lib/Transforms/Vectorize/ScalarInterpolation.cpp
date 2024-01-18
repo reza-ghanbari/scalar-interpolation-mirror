@@ -25,7 +25,6 @@ bool ScalarInterpolationCostModel::hasNonInterpolatableRecipe(llvm::VPlan &Plan)
 }
 
 unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *OrigLoop, unsigned UserSI) {
-  auto *VectorLoopRegion = Plan.getVectorLoopRegion();
   if (hasNonInterpolatableRecipe(Plan)) {
     return 0;
   }

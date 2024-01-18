@@ -3977,7 +3977,7 @@ void InnerLoopVectorizer::fixInterpolatedPhi(VPInterpolatePHIRecipe *PhiR,
   // target reduction in the loop using a Reduction recipe.
   // As we are adding the reduction instruction once for all the interpolated reductions
   // we should do it only in one reduction and not the rest of them.
-  if (!State.increaseAndCheckReductionCounter())
+  if (!State.increaseAndCheckReductionCounter(OrigPhi))
     return;
   if (UnderlyingReduction->isInLoop())
     return;

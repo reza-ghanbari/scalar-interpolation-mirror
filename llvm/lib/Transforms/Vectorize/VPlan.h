@@ -244,7 +244,6 @@ struct VPTransformState {
   ElementCount VF;
   unsigned UF;
   unsigned SIFactor;
-  unsigned InterpolatedReductionCounter = 0;
   /// Hold the indices to generate specific scalar instructions. Null indicates
   /// that all instances are to be generated, using either scalar or vector
   /// instructions.
@@ -262,6 +261,7 @@ struct VPTransformState {
     DenseMap<VPValue *, ScalarsPerPartValuesTy> PerPartScalars;
 
     DenseMap<VPValue *, Value *> InterpolatedScalars;
+    DenseMap<Instruction*, unsigned> InterpolatedReductionCounters;
   } Data;
 
   /// Get the generated Value for a given VPValue and a given Part. Note that
@@ -282,8 +282,10 @@ struct VPTransformState {
            I->second[Part];
   }
 
-  bool increaseAndCheckReductionCounter() {
-    return (++InterpolatedReductionCounter == SIFactor);
+  bool increaseAndCheckReductionCounter(Instruction* Phi) {
+    if (!Data.InterpolatedReductionCounters.count(Phi))
+      Data.InterpolatedReductionCounters[Phi] = 0;
+    return (++Data.InterpolatedReductionCounters[Phi] == SIFactor);
   }
 
   SmallVector<llvm::VPInterpolatePHIRecipe*> getAllSimilarInterpolateRecipes(VPInterpolatePHIRecipe* OriginalRecipe);
