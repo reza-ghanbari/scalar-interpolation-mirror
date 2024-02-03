@@ -161,8 +161,12 @@ bool VPRecipeBase::mayHaveSideEffects() const {
 }
 
 void VPLiveOut::fixPhi(VPlan &Plan, VPTransformState &State) {
-  auto Lane = VPLane::getLastLaneForVF(State.VF);
   VPValue *ExitValue = getOperand(0);
+  if (isa<VPInterpolateRecipe>(ExitValue) || isa<VPInterpolatePHIRecipe>(ExitValue)) {
+    Phi->addIncoming(State.getInterpolateValue(ExitValue), State.Builder.GetInsertBlock());
+    return;
+  }
+  auto Lane = VPLane::getLastLaneForVF(State.VF);
   if (vputils::isUniformAfterVectorization(ExitValue))
     Lane = VPLane::getFirstLane();
   Phi->addIncoming(State.get(ExitValue, VPIteration(State.UF - 1, Lane)),

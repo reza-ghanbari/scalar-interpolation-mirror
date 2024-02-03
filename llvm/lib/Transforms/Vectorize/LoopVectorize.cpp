@@ -9802,47 +9802,6 @@ void VPReductionRecipe::execute(VPTransformState &State) {
 
 void VPInterpolateRecipe::execute(VPTransformState &State) {
   Instruction *UI = getUnderlyingInstr();
-//  todo-si: check if you need this if
-//  if (State.Instance) { // Generate a single instance.
-//    assert(!State.VF.isScalable() && "Can't scalarize a scalable vector");
-//    State.ILV->scalarizeInstruction(UI, this, *State.Instance, State);
-//    // Insert scalar instance packing it into a vector.
-//    return;
-//  }
-
-  /*if (IsUniform) {
-    // If the recipe is uniform across all parts (instead of just per VF), only
-    // generate a single instance.
-    if ((isa<LoadInst>(UI) || isa<StoreInst>(UI)) &&
-        all_of(operands(), [](VPValue *Op) {
-          return Op->isDefinedOutsideVectorRegions();
-        })) {
-      State.ILV->scalarizeInstruction(UI, this, VPIteration(0, 0), State);
-      if (user_begin() != user_end()) {
-        for (unsigned Part = 1; Part < State.UF; ++Part)
-          State.set(this, State.get(this, VPIteration(0, 0)),
-                    VPIteration(Part, 0));
-      }
-      return;
-    }
-
-    // Uniform within VL means we need to generate lane 0 only for each
-    // unrolled copy.
-    for (unsigned Part = 0; Part < State.UF; ++Part)
-      State.ILV->scalarizeInstruction(UI, this, VPIteration(Part, 0), State);
-    return;
-  }*/
-
-  // A store of a loop varying value to a loop invariant address only
-  // needs only the last copy of the store.
-//  todo-si: do we need this?
-//  if (isa<StoreInst>(UI) && getOperand(1)->isLiveIn()) {
-//    auto Lane = VPLane::getLastLaneForVF(State.VF);
-//    State.ILV->interpolateInstruction(UI, this, State.UF - 1,
-//                                    State);
-//    return;
-//  }
-
   State.ILV->interpolateInstruction(UI, this, State);
 }
 
@@ -10795,9 +10754,6 @@ bool LoopVectorizePass::processLoop(Loop *L) {
                                PSI, Checks);
         VPlan &BestPlan = LVP.getBestPlanFor(VF.Width);
         UserSI = BestPlan.getSIF();
-        errs() << "and this is the best VPLAN:\n\n\n";
-        BestPlan.print(errs());
-        errs() << "\n\n\n";
         LB.setScalarInterpolationFactor(UserSI);
         LVP.executePlan(VF.Width, IC, BestPlan, LB, DT, false);
         ++LoopsVectorized;

@@ -818,6 +818,22 @@ VPRecipeBase* insertUpdateInstructionsForIV(VPlan& Plan, Instruction *Instr, VPR
   return InsertionPoint;
 }
 
+void handleLiveOuts(VPlan &Plan, Loop *OrigLoop) {
+  BasicBlock *ExitBB = OrigLoop->getUniqueExitBlock();
+  BasicBlock *ExitingBB = OrigLoop->getExitingBlock();
+  unsigned SIF = Plan.getSIF();
+  // Only handle single-exit loops with unique exit blocks for now.
+  if (!ExitBB || !ExitBB->getSinglePredecessor() || !ExitingBB)
+    return;
+  // Introduce VPUsers modeling the exit values.
+  for (PHINode &ExitPhi : ExitBB->phis()) {
+    Plan.removeLiveOut(&ExitPhi);
+    Value *IncomingValue = ExitPhi.getIncomingValueForBlock(ExitingBB);
+    VPValue *V = Plan.getInterpolatedVPValue(IncomingValue, SIF - 1);
+    Plan.addLiveOut(&ExitPhi, V);
+  }
+}
+
 void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop) {
   unsigned SIF = Plan.getSIF();
   if (!SIF) return;
@@ -827,8 +843,6 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop) {
   SmallVector<PHINode*> InterpolatedPhisToFix;
   for (VPBasicBlock *SIVPBB :
        reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
-    // The recipes in the block are processed in reverse order, to catch chains
-    // of dead recipes.
     for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
       Instruction *Instr = getUnderlyingInstructionOfRecipe(R);
       if (!Instr)
@@ -860,6 +874,7 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop) {
       }
     }
   }
+//  Fix the reduction phis
   for (auto* Phi: InterpolatedPhisToFix) {
     auto Backedge = Phi->getIncomingValueForBlock(OrigLoop->getLoopLatch());
     for (size_t It = 0; It < SIF; It++)
@@ -868,4 +883,6 @@ void VPlanTransforms::applyInterpolation(VPlan &Plan, Loop *OrigLoop) {
       PhiRecipe->addOperand(Plan.getInterpolatedVPValue(Backedge, It));
     }
   }
+//  Fix live-out values
+  handleLiveOuts(Plan, OrigLoop);
 }
