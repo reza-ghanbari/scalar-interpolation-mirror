@@ -25,7 +25,7 @@ public:
 
   bool containsNonInterpolatableRecipe(VPlan& Plan);
 
-  unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI);
+  unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements);
 };
 
 

@@ -24,8 +24,11 @@ bool ScalarInterpolationCostModel::hasNonInterpolatableRecipe(llvm::VPlan &Plan)
   return false;
 }
 
-unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *OrigLoop, unsigned UserSI) {
+unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *OrigLoop, unsigned UserSI, unsigned MaxSafeElements) {
   if (hasNonInterpolatableRecipe(Plan)) {
+    return 0;
+  }
+  if (Plan.hasVF(ElementCount::getFixed(MaxSafeElements))) {
     return 0;
   }
 //  TODO: develop the cost model here.
