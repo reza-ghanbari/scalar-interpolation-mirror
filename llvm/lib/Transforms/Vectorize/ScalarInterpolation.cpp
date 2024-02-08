@@ -28,7 +28,7 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *
   if (hasNonInterpolatableRecipe(Plan)) {
     return 0;
   }
-  if (Plan.hasVF(ElementCount::getFixed(MaxSafeElements))) {
+  if (Plan.getMaximumSIF(MaxSafeElements) < UserSI) {
     return 0;
   }
 //  TODO: develop the cost model here.

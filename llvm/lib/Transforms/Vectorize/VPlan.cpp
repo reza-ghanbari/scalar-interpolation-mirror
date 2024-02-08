@@ -758,6 +758,14 @@ void VPlan::execute(VPTransformState *State) {
   }
 }
 
+unsigned VPlan::getMaximumSIF(unsigned dependencyDistance) {
+  unsigned max = 0;
+  for (auto VF: VFs) {
+    max = std::max(max, VF.getKnownMinValue());
+  }
+  return dependencyDistance - max;
+}
+
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 LLVM_DUMP_METHOD
 void VPlan::print(raw_ostream &O) const {

@@ -2623,6 +2623,8 @@ public:
     return SIF;
   }
 
+  unsigned getMaximumSIF(unsigned dependencyDistance);
+
   /// Return a string with the name of the plan and the applicable VFs and UFs.
   std::string getName() const;
 
