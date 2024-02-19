@@ -9186,6 +9186,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
                         CM.getTailFoldingStyle(IVUpdateMayOverflow));
 
   unsigned int UserSI = Hints.getScalarInterpolation();
+  bool SIEnabled = Hints.isScalarInterpolationEnabled();
   // Scan the body of the loop in a topological order to visit each basic block
   // after having visited its predecessor basic blocks.
   LoopBlocksDFS DFS(OrigLoop);

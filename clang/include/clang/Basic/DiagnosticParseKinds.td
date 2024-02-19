@@ -1529,7 +1529,7 @@ def err_pragma_loop_missing_argument : Error<
   "'enable'%select{|, 'full'}1%select{|, 'assume_safety'}2 or 'disable'}0">;
 def err_pragma_loop_invalid_option : Error<
   "%select{invalid|missing}0 option%select{ %1|}0; expected vectorize, "
-  "vectorize_width, interleave, interleave_count, scalar_interpolation_count, unroll, unroll_count, "
+  "vectorize_width, interleave, interleave_count, scalar_interpolation, scalar_interpolation_count, unroll, unroll_count, "
   "pipeline, pipeline_initiation_interval, vectorize_predicate, or distribute">;
 def err_pragma_loop_invalid_vectorize_option : Error<
   "vectorize_width loop hint malformed; use vectorize_width(X, fixed) or "

@@ -53,7 +53,6 @@ static void warnAboutLeftoverTransformations(Loop *L,
         getOptionalIntLoopAttribute(L, "llvm.loop.interleave.count");
     std::optional<int> ScalarInterpolationCount =
         getOptionalIntLoopAttribute(L, "llvm.loop.scalar.interpolation.count");
-//    TODO-SI: what should we do for scalar interpolation in this case?
     if (!VectorizeWidth || VectorizeWidth->isVector())
       ORE->emit(
           DiagnosticInfoOptimizationFailure(DEBUG_TYPE,
@@ -70,6 +69,15 @@ static void warnAboutLeftoverTransformations(Loop *L,
           << "loop not interleaved: the optimizer was unable to perform the "
              "requested transformation; the transformation might be disabled "
              "or specified as part of an unsupported transformation ordering");
+    else if (ScalarInterpolationCount.value_or(-1) != 0)
+      ORE->emit(
+          DiagnosticInfoOptimizationFailure(DEBUG_TYPE,
+                                            "FailedRequestedScalarInterpolation",
+                                            L->getStartLoc(), L->getHeader())
+          << "loop not scalar-interpolated: the optimizer was unable to "
+             "perform the requested transformation; the transformation might "
+             "be disabled or specified as part of an unsupported transformation "
+             "ordering");
   }
 
   if (hasDistributeTransformation(L) == TM_ForcedByUser) {

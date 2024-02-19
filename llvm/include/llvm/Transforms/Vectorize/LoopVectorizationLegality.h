@@ -66,7 +66,8 @@ class LoopVectorizeHints {
     HK_ISVECTORIZED,
     HK_PREDICATE,
     HK_SCALABLE,
-    HK_SCALAR_INTERPOLATION
+    HK_SCALAR_INTERPOLATION,
+    HK_SCALAR_INTERPOLATION_ENABLED
   };
 
   /// Hint - associates name and validation with the hint value.
@@ -89,6 +90,9 @@ class LoopVectorizeHints {
 
   /// Scalar Interpolation factor.
   Hint ScalarInterpolation;
+
+  /// Scalar Interpolation enabled.
+  Hint ScalarInterpolationEnabled;
 
   /// Vectorization forced
   Hint Force;
@@ -155,6 +159,9 @@ public:
   }
   unsigned getScalarInterpolation() const {
     return (ScalarInterpolation.Value) ? ScalarInterpolation.Value : 0;
+  }
+  bool isScalarInterpolationEnabled() const {
+    return (ScalarInterpolationEnabled.Value == 1) ? true : false;
   }
   unsigned getIsVectorized() const { return IsVectorized.Value; }
   unsigned getPredicate() const { return Predicate.Value; }

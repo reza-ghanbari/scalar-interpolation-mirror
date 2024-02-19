@@ -3665,6 +3665,7 @@ def LoopHint : Attr {
   /// vectorize: vectorizes loop operations if State == Enable.
   /// vectorize_width: vectorize loop operations with width 'Value'.
   /// interleave: interleave multiple loop iterations if State == Enable.
+  /// Scalar_interpolation: apply scalar interpolation if State == Enable.
   /// interleave_count: interleaves 'Value' loop iterations.
   /// scalar_interpolation_count: adds 'Value' scalar instructions between vectorized instructions.
   /// unroll: fully unroll loop if State == Enable.
@@ -3686,11 +3687,11 @@ def LoopHint : Attr {
 
   /// State of the loop optimization specified by the spelling.
   let Args = [EnumArgument<"Option", "OptionType",
-                          ["vectorize", "vectorize_width", "interleave", "interleave_count", "scalar_interpolation_count",
+                          ["vectorize", "vectorize_width", "interleave", "interleave_count", "scalar_interpolation", "scalar_interpolation_count",
                            "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count",
                            "pipeline", "pipeline_initiation_interval", "distribute",
                            "vectorize_predicate"],
-                          ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount", "ScalarInterpolationCount",
+                          ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount", "ScalarInterpolation", "ScalarInterpolationCount",
                            "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount",
                            "PipelineDisabled", "PipelineInitiationInterval", "Distribute",
                            "VectorizePredicate"]>,
@@ -3708,6 +3709,7 @@ def LoopHint : Attr {
     case VectorizeWidth: return "vectorize_width";
     case Interleave: return "interleave";
     case InterleaveCount: return "interleave_count";
+    case ScalarInterpolation: return "scalar_interpolation";
     case ScalarInterpolationCount: return "scalar_interpolation_count";
     case Unroll: return "unroll";
     case UnrollCount: return "unroll_count";

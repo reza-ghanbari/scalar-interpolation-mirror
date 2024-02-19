@@ -1376,6 +1376,7 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
     StateOption = llvm::StringSwitch<bool>(OptionInfo->getName())
                       .Case("vectorize", true)
                       .Case("interleave", true)
+                      .Case("scalar_interpolation", true)
                       .Case("vectorize_predicate", true)
                       .Default(false) ||
                   OptionUnroll || OptionUnrollAndJam || OptionDistribute ||
@@ -3466,6 +3467,7 @@ static bool ParseLoopHintValue(Preprocessor &PP, Token &Tok, Token PragmaName,
 ///    'vectorize_width' '(' loop-hint-value ')'
 ///    'interleave_count' '(' loop-hint-value ')'
 ///    'scalar_interpolation_count' '(' loop-hint-value ')'
+///    'scalar_interpolation' '(' loop-hint-keyword ')'
 ///    'unroll_count' '(' loop-hint-value ')'
 ///    'pipeline' '(' disable ')'
 ///    'pipeline_initiation_interval' '(' loop-hint-value ')'
@@ -3524,6 +3526,7 @@ void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
                            .Case("vectorize", true)
                            .Case("interleave", true)
                            .Case("unroll", true)
+                           .Case("scalar_interpolation", true)
                            .Case("distribute", true)
                            .Case("vectorize_predicate", true)
                            .Case("vectorize_width", true)
