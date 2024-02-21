@@ -220,6 +220,7 @@ LoopInfo::createLoopVectorizeMetadata(const LoopAttributes &Attrs,
            Attrs.VectorizePredicateEnable != LoopAttributes::Unspecified ||
            Attrs.InterleaveCount != 0 || Attrs.VectorizeWidth != 0 ||
            Attrs.ScalarInterpolationCount != 0 ||
+           Attrs.ScalarInterpolationEnable != LoopAttributes::Unspecified ||
            Attrs.VectorizeScalable != LoopAttributes::Unspecified)
     Enabled = true;
 
