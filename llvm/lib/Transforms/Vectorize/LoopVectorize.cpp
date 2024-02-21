@@ -9186,7 +9186,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
                         CM.getTailFoldingStyle(IVUpdateMayOverflow));
 
   unsigned int UserSI = Hints.getScalarInterpolation();
-  bool SIEnabled = Hints.isScalarInterpolationEnabled();
+  bool ScalarInterpolationEnabled = Hints.isScalarInterpolationEnabled();
   // Scan the body of the loop in a topological order to visit each basic block
   // after having visited its predecessor basic blocks.
   LoopBlocksDFS DFS(OrigLoop);
@@ -9338,7 +9338,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel();
   auto SmallestAndWidestTypes = CM.getSmallestAndWidestTypes();
   auto MaxLimit = llvm::bit_floor(Legal->getMaxSafeVectorWidthInBits() / SmallestAndWidestTypes.second);
-  UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit);
+  UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit, ScalarInterpolationEnabled);
   Plan->setSIF(UserSI);
   if (UserSI > 0)
     VPlanTransforms::applyInterpolation(*Plan, OrigLoop);

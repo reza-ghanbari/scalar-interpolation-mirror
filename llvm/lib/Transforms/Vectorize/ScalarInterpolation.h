@@ -18,6 +18,27 @@ private:
       llvm::VPWidenSelectRecipe::VPWidenSelectSC,
       llvm::VPPredInstPHIRecipe::VPPredInstPHISC
   };
+
+  DenseMap<const char *, DenseMap<Type *, unsigned>> InstructionTypeMap;
+
+  bool HasReductions = false;
+
+  unsigned NumberOfInstructions = 0;
+
+  unsigned NumberOfComputeInstructions = 0;
+
+  unsigned NumberOfMemoryInstructions = 0;
+
+  float MemToComputeRatio = 0.0;
+
+  void addFeature(Instruction *I, Type *T);
+
+  void extractFeaturesFromLoop(Loop *L);
+
+  unsigned getProfitableSIFactor(Loop* OrigLoop);
+
+  unsigned getValueFromMap(const char* I, Type *T);
+
 public:
   ScalarInterpolationCostModel() {};
 
@@ -25,7 +46,7 @@ public:
 
   bool containsNonInterpolatableRecipe(VPlan& Plan);
 
-  unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements);
+  unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
 };
 
 
