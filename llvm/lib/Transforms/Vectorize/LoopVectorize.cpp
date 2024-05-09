@@ -1428,6 +1428,11 @@ public:
     return WideningDecisions[InstOnVF].second;
   }
 
+  InstructionCost getInstructionCostForSI(Instruction *I, ElementCount VF) {
+    VectorizationCostTy Cost = getInstructionCost(I, VF);
+    return Cost.first;
+  }
+
   /// Return True if instruction \p I is an optimizable truncate whose operand
   /// is an induction variable. Such a truncate will be removed by adding a new
   /// induction variable with the destination type.
@@ -9340,6 +9345,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   auto MaxLimit = llvm::bit_floor(Legal->getMaxSafeVectorWidthInBits() / SmallestAndWidestTypes.second);
   UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit, ScalarInterpolationEnabled);
   Plan->setSIF(UserSI);
+  errs() << SICostModel->getSIFactor(*Plan, OrigLoop, CM, getVScaleForTuning(OrigLoop, TTI));
   if (UserSI > 0)
     VPlanTransforms::applyInterpolation(*Plan, OrigLoop);
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
@@ -10162,6 +10168,48 @@ Value *VPTransformState::get(VPValue *Def, unsigned Part) {
   }
   Builder.restoreIP(OldIP);
   return VectorValue;
+}
+
+ElementCount ScalarInterpolationCostModel::getProfitableVF(VPlan &Plan, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale) {
+  ElementCount BestVF;
+  int MinCost = *InstructionCost::getMax().getValue();
+  for (auto VF : Plan.getVFs()) {
+    auto VFCost = CM.expectedCost(VF).first.getValue();
+    if (VFCost) {
+      unsigned Width =
+          VF.isScalable()
+              ? VF.getKnownMinValue() * (VScale ? *VScale : 1)
+              : VF.getFixedValue();
+      if (MinCost == -1 || MinCost * Width > *VFCost) {
+        BestVF = VF;
+        MinCost = *VFCost / Width;
+      }
+    }
+  }
+  return BestVF;
+}
+
+unsigned ScalarInterpolationCostModel::getSIFactor(VPlan &Plan, Loop *OrigLoop, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale) {
+  errs() << "\n\n\nSI: This is the start of the Recipes\n\n\n";
+  ElementCount VF = getProfitableVF(Plan, CM, VScale);
+  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
+      Plan.getEntry());
+  for (VPBasicBlock *SIVPBB :
+       reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
+    for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
+      R.dump();
+      if (auto *Instr = getUnderlyingInstructionOfRecipe(R)) {
+        auto SICost = CM.getInstructionCostForSI(Instr, VF);
+        if (SICost.isValid()) {
+          errs() << "(this is SI Cost)" << SICost.getValue() << "\n";
+            } else {
+          errs() << "(this is SI Cost) invalid\n";
+        }
+      }
+    }
+  }
+  errs() << "\n\n\nSI: This is the end of the Recipes\n\n\n";
+  return 0;
 }
 
 // Process the loop in the VPlan-native vectorization path. This path builds

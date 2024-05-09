@@ -106,7 +106,6 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(Loop *OrigLoop) {
   }
 }
 
-
 bool ScalarInterpolationCostModel::hasNonInterpolatableRecipe(llvm::VPlan &Plan) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
@@ -135,4 +134,20 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *
   if (UserSI == 0)
     return SuggestedSI;
   return UserSI;
+}
+
+Instruction *ScalarInterpolationCostModel::getUnderlyingInstructionOfRecipe(VPRecipeBase &R) {
+  Instruction *Instr = nullptr;
+  if (isa<VPWidenMemoryInstructionRecipe>(R)) {
+    auto *WidenMemInstr = cast<VPWidenMemoryInstructionRecipe>(&R);
+    if (WidenMemInstr->isStore()) {
+      Instr = &WidenMemInstr->getIngredient();
+    }
+  }
+  if (!Instr) {
+    if (R.definedValues().empty() || !R.getVPValue(0)->getUnderlyingValue())
+      return nullptr;
+    Instr = R.getUnderlyingInstr();
+  }
+  return Instr;
 }

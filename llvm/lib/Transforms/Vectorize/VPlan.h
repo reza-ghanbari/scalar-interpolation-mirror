@@ -2603,6 +2603,8 @@ public:
     VFs.insert(VF);
   }
 
+  SmallSetVector<ElementCount, 2> getVFs() { return VFs; }
+
   bool hasVF(ElementCount VF) { return VFs.count(VF); }
 
   bool hasScalarVFOnly() const { return VFs.size() == 1 && VFs[0].isScalar(); }

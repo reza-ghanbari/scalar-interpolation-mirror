@@ -42,11 +42,17 @@ private:
 public:
   ScalarInterpolationCostModel() {};
 
+  Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
+
   bool hasNonInterpolatableRecipe(VPlan& Plan);
 
   bool containsNonInterpolatableRecipe(VPlan& Plan);
 
   unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
+
+  unsigned getSIFactor(VPlan& Plan, Loop* OrigLoop, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale);
+
+  ElementCount getProfitableVF(VPlan &Plan, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale);
 };
 
 
