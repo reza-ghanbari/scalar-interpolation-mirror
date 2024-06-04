@@ -9340,12 +9340,13 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   Plan->disableValue2VPValue();
 
   VPlanTransforms::removeDeadRecipes(*Plan);
-  ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel();
+  ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel(CM, OrigLoop, getVScaleForTuning(OrigLoop, TTI));
   auto SmallestAndWidestTypes = CM.getSmallestAndWidestTypes();
   auto MaxLimit = llvm::bit_floor(Legal->getMaxSafeVectorWidthInBits() / SmallestAndWidestTypes.second);
   UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit, ScalarInterpolationEnabled);
   Plan->setSIF(UserSI);
-  errs() << SICostModel->getSIFactor(*Plan, OrigLoop, CM, getVScaleForTuning(OrigLoop, TTI));
+  if (ScalarInterpolationEnabled)
+    Plan->setSIF(SICostModel->getSIFactor(*Plan));
   if (UserSI > 0)
     VPlanTransforms::applyInterpolation(*Plan, OrigLoop);
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
@@ -10170,7 +10171,7 @@ Value *VPTransformState::get(VPValue *Def, unsigned Part) {
   return VectorValue;
 }
 
-ElementCount ScalarInterpolationCostModel::getProfitableVF(VPlan &Plan, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale) {
+ElementCount ScalarInterpolationCostModel::getProfitableVF(VPlan& Plan) {
   ElementCount BestVF;
   int MinCost = *InstructionCost::getMax().getValue();
   for (auto VF : Plan.getVFs()) {
@@ -10189,26 +10190,89 @@ ElementCount ScalarInterpolationCostModel::getProfitableVF(VPlan &Plan, LoopVect
   return BestVF;
 }
 
-unsigned ScalarInterpolationCostModel::getSIFactor(VPlan &Plan, Loop *OrigLoop, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale) {
-  errs() << "\n\n\nSI: This is the start of the Recipes\n\n\n";
-  ElementCount VF = getProfitableVF(Plan, CM, VScale);
+DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::initScheduleMap(VPlan& Plan) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
-      Plan.getEntry());
+    Plan.getEntry());
+  DenseMap<Value*, std::pair<int, int>> ScheduleMap;
   for (VPBasicBlock *SIVPBB :
        reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
     for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
-      R.dump();
-      if (auto *Instr = getUnderlyingInstructionOfRecipe(R)) {
+      Instruction* Instr = getUnderlyingInstructionOfRecipe(R);
+      if (Instr && !ScheduleMap.contains(Instr)) {
         auto SICost = CM.getInstructionCostForSI(Instr, VF);
-        if (SICost.isValid()) {
-          errs() << "(this is SI Cost)" << SICost.getValue() << "\n";
-            } else {
-          errs() << "(this is SI Cost) invalid\n";
+        if (SICost.isValid() && SICost.getValue() == 0) {
+          ScheduleMap.insert({Instr, {0, 0}});
         }
       }
     }
   }
-  errs() << "\n\n\nSI: This is the end of the Recipes\n\n\n";
+  return ScheduleMap;
+}
+
+std::optional<int> ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, DenseMap<Value*, std::pair<int, int>> ScheduleMap) {
+  int FirstScheduleTime = 0;
+  for (auto Op: R.operands()) {
+    if (Op->isLiveIn())
+      continue;
+    if (auto* OpInstr = getUnderlyingInstructionOfRecipe(*Op->getDefiningRecipe())) {
+      if (!ScheduleMap.contains(OpInstr)) {
+        return std::nullopt;
+      }
+      FirstScheduleTime = (FirstScheduleTime > ScheduleMap[OpInstr].second)
+                              ? FirstScheduleTime : ScheduleMap[OpInstr].second;
+    }
+  }
+  return FirstScheduleTime;
+}
+
+unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
+  this->VF = getProfitableVF(Plan);
+  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
+      Plan.getEntry());
+  DenseMap<Value*, std::pair<int, int>> ScheduleMap = this->initScheduleMap(Plan);
+  int Time = 0, FinalTime = 0;
+  bool HasUnprocessedRecipe = true;
+  SmallVector<std::pair<Instruction*, int>> WorkingList;
+  for (auto Item: ScheduleMap) {
+    WorkingList.push_back({cast<Instruction>(Item.first), Item.second.first});
+  }
+  while (HasUnprocessedRecipe) {
+    HasUnprocessedRecipe = false;
+    for (VPBasicBlock *SIVPBB :
+             reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
+      for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
+        auto* Instr = getUnderlyingInstructionOfRecipe(R);
+        if (!Instr || ScheduleMap.contains(Instr)
+            || !none_of(WorkingList, [Instr](auto& Item) { return Item.first == Instr; }))
+          continue;
+        HasUnprocessedRecipe = true;
+        auto InstrScheduleTime = getScheduleOf(R, ScheduleMap);
+        if (InstrScheduleTime)
+          WorkingList.push_back({Instr, InstrScheduleTime.value()});
+      }
+    }
+    for (auto InstrPair: WorkingList) {
+      if (ScheduleMap.contains(InstrPair.first))
+        continue;
+      auto OpInstrCost = CM.getInstructionCostForSI(InstrPair.first, VF);
+      int OpInstrFinishTime = InstrPair.second + (OpInstrCost.isValid() ? *OpInstrCost.getValue() : 0);
+      if (Time >= OpInstrFinishTime) {
+        ScheduleMap[InstrPair.first] = {InstrPair.second, OpInstrFinishTime};
+        FinalTime = (FinalTime > Time) ? FinalTime : Time;
+      }
+    }
+    Time++;
+  }
+//  errs() << "\n\n\n\nSI: This is the working list in its final version. It takes " << FinalTime << " cycles:\n";
+//  for (auto& Item: ScheduleMap) {
+//    errs() << "Instr:\t";
+//    Item.first->dump();
+//    errs() << "Schedule time:\t<" << Item.second.first << ", " << Item.second.second << ">\n";
+//  }
+//  for (auto element: WorkingList) {
+//    errs() << *element.first << " " << element.second << "\n";
+//  }
+//  errs() << "\n\n\nSI: This is the end of the Recipes\n\n\n\n\n";
   return 0;
 }
 

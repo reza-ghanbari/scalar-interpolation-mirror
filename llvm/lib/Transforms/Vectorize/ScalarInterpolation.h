@@ -19,6 +19,16 @@ private:
       llvm::VPPredInstPHIRecipe::VPPredInstPHISC
   };
 
+  LoopVectorizationCostModel& CM;
+
+  Loop *OrigLoop;
+
+  std::optional<unsigned int> VScale;
+
+  DenseMap<Value*, std::pair<int, int>> initScheduleMap(VPlan &Plan);
+
+  ElementCount VF;
+
   DenseMap<const char *, DenseMap<Type *, unsigned>> InstructionTypeMap;
 
   bool HasReductions = false;
@@ -39,8 +49,11 @@ private:
 
   unsigned getValueFromMap(const char* I, Type *T);
 
+  std::optional<int> getScheduleOf(VPRecipeBase& R, DenseMap<Value*, std::pair<int, int>> ReadyValues);
+
 public:
-  ScalarInterpolationCostModel() {};
+  ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale)
+      : CM(CM), OrigLoop(OrigLoop), VScale(VScale) {};
 
   Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
 
@@ -50,9 +63,9 @@ public:
 
   unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
 
-  unsigned getSIFactor(VPlan& Plan, Loop* OrigLoop, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale);
+  unsigned getSIFactor(VPlan &Plan);
 
-  ElementCount getProfitableVF(VPlan &Plan, LoopVectorizationCostModel& CM, std::optional<unsigned int> VScale);
+  ElementCount getProfitableVF(VPlan &Plan);
 };
 
 
