@@ -10190,7 +10190,7 @@ ElementCount ScalarInterpolationCostModel::getProfitableVF(VPlan& Plan) {
   return BestVF;
 }
 
-DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::initScheduleMap(VPlan& Plan) {
+DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::initScheduleMap(VPlan& Plan, ElementCount VF) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
     Plan.getEntry());
   DenseMap<Value*, std::pair<int, int>> ScheduleMap;
@@ -10225,13 +10225,12 @@ std::optional<int> ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, 
   return FirstScheduleTime;
 }
 
-unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
-  this->VF = getProfitableVF(Plan);
+DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::getScheduleMap(VPlan &Plan, ElementCount VF) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
-  DenseMap<Value*, std::pair<int, int>> ScheduleMap = this->initScheduleMap(Plan);
   int Time = 0, FinalTime = 0;
   bool HasUnprocessedRecipe = true;
+  DenseMap<Value*, std::pair<int, int>> ScheduleMap = this->initScheduleMap(Plan, VF);
   SmallVector<std::pair<Instruction*, int>> WorkingList;
   for (auto Item: ScheduleMap) {
     WorkingList.push_back({cast<Instruction>(Item.first), Item.second.first});
@@ -10263,16 +10262,26 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
     }
     Time++;
   }
-//  errs() << "\n\n\n\nSI: This is the working list in its final version. It takes " << FinalTime << " cycles:\n";
-//  for (auto& Item: ScheduleMap) {
-//    errs() << "Instr:\t";
-//    Item.first->dump();
-//    errs() << "Schedule time:\t<" << Item.second.first << ", " << Item.second.second << ">\n";
-//  }
-//  for (auto element: WorkingList) {
-//    errs() << *element.first << " " << element.second << "\n";
-//  }
-//  errs() << "\n\n\nSI: This is the end of the Recipes\n\n\n\n\n";
+  return ScheduleMap;
+}
+
+unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
+  this->VF = getProfitableVF(Plan);
+  auto VectorScheduleMap = getScheduleMap(Plan, this->VF);
+  auto ScalarScheduleMap = getScheduleMap(Plan, ElementCount::getFixed(1));
+//    errs() << "\n\n\n\nSI: This is the scheduleMap in its final version:\n";
+//    for (auto& Item: VectorScheduleMap) {
+//      errs() << "Instr:\t";
+//      Item.first->dump();
+//      errs() << "Schedule time:\t<" << Item.second.first << ", " << Item.second.second << ">\n";
+//    }
+//    errs() << "\n\n\n\nSI: This is the scheduleMap of Scalar instructions:\n";
+//    for (auto& Item: ScalarScheduleMap) {
+//      errs() << "Instr:\t";
+//      Item.first->dump();
+//      errs() << "Schedule time:\t<" << Item.second.first << ", " << Item.second.second << ">\n";
+//    }
+//    errs() << "\n\n\nEND-SI: This is the end of the Recipes\n\n\n\n\n";
   return 0;
 }
 

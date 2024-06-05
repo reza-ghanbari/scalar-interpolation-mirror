@@ -25,7 +25,7 @@ private:
 
   std::optional<unsigned int> VScale;
 
-  DenseMap<Value*, std::pair<int, int>> initScheduleMap(VPlan &Plan);
+  DenseMap<Value*, std::pair<int, int>> initScheduleMap(VPlan &Plan, ElementCount VF);
 
   ElementCount VF;
 
@@ -62,6 +62,8 @@ public:
   bool containsNonInterpolatableRecipe(VPlan& Plan);
 
   unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
+
+  DenseMap<Value*, std::pair<int, int>> getScheduleMap(VPlan &Plan, ElementCount VF);
 
   unsigned getSIFactor(VPlan &Plan);
 
