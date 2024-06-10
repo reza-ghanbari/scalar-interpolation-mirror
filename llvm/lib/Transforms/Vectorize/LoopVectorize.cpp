@@ -10242,6 +10242,7 @@ OperationNode* ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, Dens
         return nullptr;
       }
       NewNode->addPredecessor(ScheduleMap[OpInstr]);
+      ScheduleMap[OpInstr]->addSuccessor(NewNode);
       FirstScheduleTime = (FirstScheduleTime > ScheduleMap[OpInstr]->getEndTime())
                               ? FirstScheduleTime : ScheduleMap[OpInstr]->getEndTime();
     }
@@ -10309,7 +10310,7 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   return 0;
 }
 
-DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::applyListScheduling(DenseMap<Value*, OperationNode*> schedule) {
+DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules) {
   return DenseMap<Value*, OperationNode*>();
 //  return nullptr;
 }

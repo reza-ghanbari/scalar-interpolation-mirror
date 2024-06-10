@@ -16,6 +16,8 @@ class OperationNode {
 private:
   SmallVector<OperationNode*, 6> Predecessors;
 
+  SmallVector<OperationNode*, 6> Successors;
+
   std::pair<int, int> Duration;
 
   Instruction* Instr;
@@ -24,6 +26,7 @@ public:
   OperationNode(Instruction* Instr, int StartTime): Instr(Instr) {
     this->Duration = { StartTime, -1 };
     this->Predecessors = {};
+    this->Successors = {};
   }
 
   SmallVector<OperationNode*, 6> getPredecessors() { return Predecessors; }
@@ -41,6 +44,8 @@ public:
   int getEndTime() { return this->Duration.second; }
 
   void addPredecessor(OperationNode* Pred) { this->Predecessors.push_back(Pred); }
+
+  void addSuccessor(OperationNode* Succ) { this->Successors.push_back(Succ); }
 
   Instruction* getInstruction() { return this->Instr; }
 
@@ -113,7 +118,7 @@ public:
 
   SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr);
 
-  DenseMap<Value*, OperationNode*> applyListScheduling(DenseMap<Value*, OperationNode*> schedule);
+  DenseMap<Value*, OperationNode*> applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules);
 };
 
 
