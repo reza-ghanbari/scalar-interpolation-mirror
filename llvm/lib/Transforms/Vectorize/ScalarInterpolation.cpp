@@ -151,3 +151,97 @@ Instruction *ScalarInterpolationCostModel::getUnderlyingInstructionOfRecipe(VPRe
   }
   return Instr;
 }
+
+SmallVector<int, 6> ScalarInterpolationCostModel::getScalarResourcesFor(Instruction& Instr) {
+  switch (Instr.getOpcode()) {
+  // Terminators
+//  case Ret:    return "ret";
+  case Instruction::IndirectBr:
+  case Instruction::Br:     return {0, 6};
+//  // Standard binary operators...
+  case Instruction::Trunc:
+  case Instruction::ZExt:
+  case Instruction::SExt:
+  case Instruction::And:
+  case Instruction::Or :
+  case Instruction::Xor:
+  case Instruction::Add:
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+  case Instruction::Sub: return {0, 1, 5, 6};
+  case Instruction::Mul: return {1};
+  case Instruction::UDiv:
+  case Instruction::SDiv:
+  case Instruction::URem:
+  case Instruction::SRem: return {0};
+  case Instruction::Load:          return {2, 3};
+  case Instruction::Store:         return {4};
+  default: return {};
+//
+//  // Memory instructions...
+//  case Instruction::Alloca:        return "alloca";
+//  case Instruction::AtomicCmpXchg: return "cmpxchg";
+//  case Instruction::AtomicRMW:     return "atomicrmw";
+//  case Instruction::Fence:         return "fence";
+//  case Instruction::GetElementPtr: return "getelementptr";
+//
+//  // Convert instructions...
+
+//  case Instruction::FPTrunc:       return "fptrunc";
+//  case Instruction::FPExt:         return "fpext";
+//  case Instruction::FPToUI:        return "fptoui";
+//  case Instruction::FPToSI:        return "fptosi";
+//  case Instruction::UIToFP:        return "uitofp";
+//  case Instruction::SIToFP:        return "sitofp";
+//  case Instruction::IntToPtr:      return "inttoptr";
+//  case Instruction::PtrToInt:      return "ptrtoint";
+//  case Instruction::BitCast:       return "bitcast";
+//  case Instruction::AddrSpaceCast: return "addrspacecast";
+//
+//  // Other instructions...
+//  case Instruction::ICmp:           return "icmp";
+//  case Instruction::FCmp:           return "fcmp";
+//  case Instruction::PHI:            return "phi";
+//  case Instruction::Select:         return "select";
+//  case Instruction::Call:           return "call";
+
+//  case Instruction::VAArg:          return "va_arg";
+//  case Instruction::ExtractElement: return "extractelement";
+//  case Instruction::InsertElement:  return "insertelement";
+//  case Instruction::ShuffleVector:  return "shufflevector";
+//  case Instruction::ExtractValue:   return "extractvalue";
+//  case Instruction::InsertValue:    return "insertvalue";
+//  case Instruction::LandingPad:     return "landingpad";
+//  case Instruction::CleanupPad:     return "cleanuppad";
+//  case Instruction::Freeze:         return "freeze";
+//
+  }
+}
+
+SmallVector<int, 6> ScalarInterpolationCostModel::getVectorResourcesFor(Instruction& Instr) {
+  switch (Instr.getOpcode()) {
+  case Instruction::IndirectBr:
+  case Instruction::Br:     return {0, 6};
+  case Instruction::Trunc:
+  case Instruction::ZExt:
+  case Instruction::SExt:
+  case Instruction::And:
+  case Instruction::Or :
+  case Instruction::Xor:
+  case Instruction::Add:
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+  case Instruction::Sub: return {0, 1, 5};
+  case Instruction::Mul: return {0, 1};
+  case Instruction::Load:          return {2, 3};
+  case Instruction::Store:         return {4};
+  case Instruction::ShuffleVector:  return {5};
+  default: return {};
+  }
+}
+
+SmallVector<int, 6> ScalarInterpolationCostModel::getResourcesFor(llvm::Instruction &Instr, bool isVector) {
+  return isVector ? getVectorResourcesFor(Instr) : getScalarResourcesFor(Instr);
+}

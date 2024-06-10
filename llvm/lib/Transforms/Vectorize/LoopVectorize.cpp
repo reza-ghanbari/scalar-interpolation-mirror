@@ -10190,10 +10190,30 @@ ElementCount ScalarInterpolationCostModel::getProfitableVF(VPlan& Plan) {
   return BestVF;
 }
 
-DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::initScheduleMap(VPlan& Plan, ElementCount VF) {
+void OperationNode::print(raw_fd_ostream &OS) {
+  OS << "\nOperationNode:\n";
+  OS << "\tInstruction: ";
+  if (Instr)
+    Instr->print(OS);
+  OS << "\n\tDuration: <" << Duration.first << ", " << Duration.second << ">\n";
+  for (auto Item: Predecessors) {
+    errs() << "Predecessor:\t";
+    Item->print(OS);
+  }
+  if (Instr)
+    OS << "End of OperationNode of " << *Instr << "\n";
+}
+
+void OperationNode::setDuration(InstructionCost Duration) {
+  if (Duration.isValid()) {
+    this->Duration.second = Duration.getValue().value() + this->Duration.first;
+  }
+}
+
+DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::initScheduleMap(VPlan& Plan, ElementCount VF) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
     Plan.getEntry());
-  DenseMap<Value*, std::pair<int, int>> ScheduleMap;
+  DenseMap<Value*, OperationNode*> ScheduleMap;
   for (VPBasicBlock *SIVPBB :
        reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
     for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
@@ -10201,7 +10221,9 @@ DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::initSchedule
       if (Instr && !ScheduleMap.contains(Instr)) {
         auto SICost = CM.getInstructionCostForSI(Instr, VF);
         if (SICost.isValid() && SICost.getValue() == 0) {
-          ScheduleMap.insert({Instr, {0, 0}});
+          auto NewNode = new OperationNode(Instr, 0);
+          NewNode->setDuration(SICost);
+          ScheduleMap.insert({Instr, NewNode});
         }
       }
     }
@@ -10209,31 +10231,34 @@ DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::initSchedule
   return ScheduleMap;
 }
 
-std::optional<int> ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, DenseMap<Value*, std::pair<int, int>> ScheduleMap) {
+OperationNode* ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, DenseMap<Value*, OperationNode*> ScheduleMap) {
   int FirstScheduleTime = 0;
+  auto* NewNode = new OperationNode(getUnderlyingInstructionOfRecipe(R), 0);
   for (auto Op: R.operands()) {
     if (Op->isLiveIn())
       continue;
     if (auto* OpInstr = getUnderlyingInstructionOfRecipe(*Op->getDefiningRecipe())) {
       if (!ScheduleMap.contains(OpInstr)) {
-        return std::nullopt;
+        return nullptr;
       }
-      FirstScheduleTime = (FirstScheduleTime > ScheduleMap[OpInstr].second)
-                              ? FirstScheduleTime : ScheduleMap[OpInstr].second;
+      NewNode->addPredecessor(ScheduleMap[OpInstr]);
+      FirstScheduleTime = (FirstScheduleTime > ScheduleMap[OpInstr]->getEndTime())
+                              ? FirstScheduleTime : ScheduleMap[OpInstr]->getEndTime();
     }
   }
-  return FirstScheduleTime;
+  NewNode->setStartTime(FirstScheduleTime);
+  return NewNode;
 }
 
-DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::getScheduleMap(VPlan &Plan, ElementCount VF) {
+DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::getScheduleMap(VPlan &Plan, ElementCount VF) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   int Time = 0, FinalTime = 0;
   bool HasUnprocessedRecipe = true;
-  DenseMap<Value*, std::pair<int, int>> ScheduleMap = this->initScheduleMap(Plan, VF);
-  SmallVector<std::pair<Instruction*, int>> WorkingList;
+  DenseMap<Value*, OperationNode*> ScheduleMap = this->initScheduleMap(Plan, VF);
+  SmallVector<OperationNode*> WorkingList;
   for (auto Item: ScheduleMap) {
-    WorkingList.push_back({cast<Instruction>(Item.first), Item.second.first});
+    WorkingList.push_back(Item.second);
   }
   while (HasUnprocessedRecipe) {
     HasUnprocessedRecipe = false;
@@ -10242,21 +10267,20 @@ DenseMap<Value*, std::pair<int, int>> ScalarInterpolationCostModel::getScheduleM
       for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
         auto* Instr = getUnderlyingInstructionOfRecipe(R);
         if (!Instr || ScheduleMap.contains(Instr)
-            || !none_of(WorkingList, [Instr](auto& Item) { return Item.first == Instr; }))
+            || !none_of(WorkingList, [Instr](auto& Item) { return Item->getInstruction() == Instr; }))
           continue;
         HasUnprocessedRecipe = true;
-        auto InstrScheduleTime = getScheduleOf(R, ScheduleMap);
-        if (InstrScheduleTime)
-          WorkingList.push_back({Instr, InstrScheduleTime.value()});
+        if (auto NewNode = getScheduleOf(R, ScheduleMap))
+          WorkingList.push_back(NewNode);
       }
     }
-    for (auto InstrPair: WorkingList) {
-      if (ScheduleMap.contains(InstrPair.first))
+    for (auto Node: WorkingList) {
+      auto UnderlyingInstr = Node->getInstruction();
+      if (ScheduleMap.contains(UnderlyingInstr))
         continue;
-      auto OpInstrCost = CM.getInstructionCostForSI(InstrPair.first, VF);
-      int OpInstrFinishTime = InstrPair.second + (OpInstrCost.isValid() ? *OpInstrCost.getValue() : 0);
-      if (Time >= OpInstrFinishTime) {
-        ScheduleMap[InstrPair.first] = {InstrPair.second, OpInstrFinishTime};
+      Node->setDuration(CM.getInstructionCostForSI(UnderlyingInstr, VF));
+      if (Node->isScheduled() && Time >= Node->getEndTime()) {
+        ScheduleMap[UnderlyingInstr] = Node;
         FinalTime = (FinalTime > Time) ? FinalTime : Time;
       }
     }
@@ -10269,20 +10293,25 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   this->VF = getProfitableVF(Plan);
   auto VectorScheduleMap = getScheduleMap(Plan, this->VF);
   auto ScalarScheduleMap = getScheduleMap(Plan, ElementCount::getFixed(1));
-//    errs() << "\n\n\n\nSI: This is the scheduleMap in its final version:\n";
+//    errs() << "\n\n\n\nSI: This is the scheduleMap of vector instructions:\n";
 //    for (auto& Item: VectorScheduleMap) {
 //      errs() << "Instr:\t";
 //      Item.first->dump();
-//      errs() << "Schedule time:\t<" << Item.second.first << ", " << Item.second.second << ">\n";
+//      errs() << "Schedule time:\t<" << Item.second->getStartTime() << ", " << Item.second->getEndTime() << ">\n";
 //    }
 //    errs() << "\n\n\n\nSI: This is the scheduleMap of Scalar instructions:\n";
 //    for (auto& Item: ScalarScheduleMap) {
 //      errs() << "Instr:\t";
 //      Item.first->dump();
-//      errs() << "Schedule time:\t<" << Item.second.first << ", " << Item.second.second << ">\n";
+//      errs() << "Schedule time:\t<" << Item.second->getStartTime() << ", " << Item.second->getEndTime() << ">\n";
 //    }
 //    errs() << "\n\n\nEND-SI: This is the end of the Recipes\n\n\n\n\n";
   return 0;
+}
+
+DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::applyListScheduling(DenseMap<Value*, OperationNode*> schedule) {
+  return DenseMap<Value*, OperationNode*>();
+//  return nullptr;
 }
 
 // Process the loop in the VPlan-native vectorization path. This path builds
