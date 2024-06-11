@@ -10195,18 +10195,18 @@ void OperationNode::print(raw_fd_ostream &OS) {
   OS << "\tInstruction: ";
   if (Instr)
     Instr->print(OS);
-  OS << "\n\tDuration: <" << Duration.first << ", " << Duration.second << ">\n";
-  for (auto Item: Predecessors) {
-    errs() << "Predecessor:\t";
-    Item->print(OS);
-  }
-  if (Instr)
-    OS << "End of OperationNode of " << *Instr << "\n";
+  OS << "\n\tDuration: <" << StartTime << ", " << StartTime + Duration << ">\n";
+//  for (auto Item: Predecessors) {
+//    errs() << "Predecessor:\t";
+//    Item->print(OS);
+//  }
+//  if (Instr)
+//    OS << "End of OperationNode of " << *Instr << "\n";
 }
 
 void OperationNode::setDuration(InstructionCost Duration) {
   if (Duration.isValid()) {
-    this->Duration.second = Duration.getValue().value() + this->Duration.first;
+    this->Duration = Duration.getValue().value();
   }
 }
 
@@ -10242,7 +10242,6 @@ OperationNode* ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, Dens
         return nullptr;
       }
       NewNode->addPredecessor(ScheduleMap[OpInstr]);
-      ScheduleMap[OpInstr]->addSuccessor(NewNode);
       FirstScheduleTime = (FirstScheduleTime > ScheduleMap[OpInstr]->getEndTime())
                               ? FirstScheduleTime : ScheduleMap[OpInstr]->getEndTime();
     }
@@ -10251,7 +10250,7 @@ OperationNode* ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, Dens
   return NewNode;
 }
 
-DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::getScheduleMap(VPlan &Plan, ElementCount VF) {
+std::pair<DenseMap<Value*, OperationNode*>, int> ScalarInterpolationCostModel::getScheduleMap(VPlan &Plan, ElementCount VF) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   int Time = 0, FinalTime = 0;
@@ -10282,36 +10281,110 @@ DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::getScheduleMap(VP
       Node->setDuration(CM.getInstructionCostForSI(UnderlyingInstr, VF));
       if (Node->isScheduled() && Time >= Node->getEndTime()) {
         ScheduleMap[UnderlyingInstr] = Node;
+        for (auto Pred: Node->getPredecessors()) {
+          Pred->addSuccessor(Node);
+        }
         FinalTime = (FinalTime > Time) ? FinalTime : Time;
       }
     }
     Time++;
   }
-  return ScheduleMap;
+  return {ScheduleMap, FinalTime};
+}
+
+void ScalarInterpolationCostModel::setSIFactorForScheduleMap(DenseMap<llvm::Value *, OperationNode *> ScheduleMap, unsigned int SIFactor) {
+  for (auto& Item: ScheduleMap) {
+    Item.second->setSIFactor(SIFactor);
+  }
 }
 
 unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   this->VF = getProfitableVF(Plan);
-  auto VectorScheduleMap = getScheduleMap(Plan, this->VF);
-  auto ScalarScheduleMap = getScheduleMap(Plan, ElementCount::getFixed(1));
-//    errs() << "\n\n\n\nSI: This is the scheduleMap of vector instructions:\n";
-//    for (auto& Item: VectorScheduleMap) {
-//      errs() << "Instr:\t";
-//      Item.first->dump();
-//      errs() << "Schedule time:\t<" << Item.second->getStartTime() << ", " << Item.second->getEndTime() << ">\n";
-//    }
-//    errs() << "\n\n\n\nSI: This is the scheduleMap of Scalar instructions:\n";
-//    for (auto& Item: ScalarScheduleMap) {
-//      errs() << "Instr:\t";
-//      Item.first->dump();
-//      errs() << "Schedule time:\t<" << Item.second->getStartTime() << ", " << Item.second->getEndTime() << ">\n";
-//    }
-//    errs() << "\n\n\nEND-SI: This is the end of the Recipes\n\n\n\n\n";
+  auto VectorSchedule = getScheduleMap(Plan, this->VF);
+  setSIFactorForScheduleMap(VectorSchedule.first, 0);
+  auto ScalarSchedule = getScheduleMap(Plan, ElementCount::getFixed(1));
+  setSIFactorForScheduleMap(ScalarSchedule.first, 1);
+  if (ScalarSchedule.second >= VectorSchedule.second)
+    return 0;
+//  errs() << "\n\n\n\nSI: This is the scheduleMap of vector instructions:\n";
+//  for (auto& Item: VectorSchedule.first) {
+//    Item.second->print(errs());
+//  }
+//  errs() << "\n\n\n\nSI: This is the scheduleMap of Scalar instructions:\n";
+//  for (auto& Item: ScalarSchedule.first) {
+//    Item.second->print(errs());
+//  }
+//  errs() << "\n\n\nEND-SI: This is the end of the Recipes\n\n\n\n\n";
+  auto Schedule = applyListScheduling({VectorSchedule.first, ScalarSchedule.first}, VectorSchedule.second);
   return 0;
 }
 
-DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules) {
-  return DenseMap<Value*, OperationNode*>();
+SmallSet<OperationNode*, 30> ScalarInterpolationCostModel::getReadyNodes(SmallVector<DenseMap<Value*, OperationNode*>> schedules) {
+  SmallSet<OperationNode*, 30> ReadyList;
+  for (auto Schedule: schedules) {
+    for (auto Item: Schedule) {
+      if (Item.second->getStartTime() == 0) {
+        ReadyList.insert(Item.second);
+      }
+    }
+  }
+  return ReadyList;
+}
+
+OperationNode* ScalarInterpolationCostModel::selectNextNodeToSchedule(SmallSet<OperationNode*, 30> ReadyList, int ScheduleLength) {
+  OperationNode* NextNode = nullptr;
+  int HighestPriority = -2, NodePriority = 0;
+  for (auto Node: ReadyList) {
+//    TODO-SI: check the availability of the resources
+    NodePriority = (Node->getSIFactor() > 0) ? -1 : (ScheduleLength - Node->getStartTime());
+    if (NodePriority > HighestPriority) {
+      HighestPriority = NodePriority;
+      NextNode = Node;
+    }
+  }
+  return NextNode;
+}
+
+SmallSet<OperationNode*, 30> ScalarInterpolationCostModel::applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength) {
+  auto ReadyList = getReadyNodes(schedules);
+  SmallSet<OperationNode*, 30> ExecutionList = {};
+  SmallSet<OperationNode*, 30> ScheduleList = {};
+  int Cycle = 0;
+  for (auto Node: ReadyList) {
+    if (Node->getDuration() == 0) {
+      Node->setStartTime(Cycle);
+      ScheduleList.insert(Node);
+      ReadyList.erase(Node);
+    }
+  }
+  while (!(ReadyList.empty() && ExecutionList.empty())) {
+    auto NextNode = selectNextNodeToSchedule(ReadyList, ScheduleLength);
+    while (NextNode) {
+      NextNode->setStartTime(Cycle);
+      ExecutionList.insert(NextNode);
+      ReadyList.erase(NextNode);
+      for (auto Successor: NextNode->getSuccessors()) {
+        if (all_of(Successor->getPredecessors(), [&ScheduleList, &ExecutionList, Cycle](auto& Item)
+                   { return (ScheduleList.contains(Item) || ExecutionList.contains(Item)) && Item->getEndTime() <= Cycle; })) {
+          ReadyList.insert(Successor);
+        }
+      }
+      NextNode = selectNextNodeToSchedule(ReadyList, ScheduleLength);
+    }
+    Cycle++;
+    for (auto Node: ExecutionList) {
+      if (Node->getEndTime() <= Cycle) {
+        ScheduleList.insert(Node);
+        ExecutionList.erase(Node);
+        for (auto Successor: Node->getSuccessors()) {
+          if (all_of(Successor->getPredecessors(), [&ScheduleList, &ExecutionList, Cycle](auto& Item)
+                     { return (ScheduleList.contains(Item) || ExecutionList.contains(Item)) && Item->getEndTime() <= Cycle; }))
+            ReadyList.insert(Successor);
+        }
+      }
+    }
+  }
+  return ScheduleList;
 //  return nullptr;
 }
 

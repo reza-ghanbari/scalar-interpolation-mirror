@@ -18,30 +18,43 @@ private:
 
   SmallVector<OperationNode*, 6> Successors;
 
-  std::pair<int, int> Duration;
+  int StartTime;
+
+  int Duration;
 
   Instruction* Instr;
 
+  int SIFactor;
+
 public:
   OperationNode(Instruction* Instr, int StartTime): Instr(Instr) {
-    this->Duration = { StartTime, -1 };
+    this->StartTime = StartTime;
+    this->Duration = -1;
     this->Predecessors = {};
     this->Successors = {};
   }
 
   SmallVector<OperationNode*, 6> getPredecessors() { return Predecessors; }
 
-  void setStartTime(int StartTime) { this->Duration.first = StartTime; }
+  SmallVector<OperationNode*, 6> getSuccessors() { return Successors; }
 
-  bool isScheduled() { return this->Duration.second != -1; }
+  void setStartTime(int StartTime) { this->StartTime = StartTime; }
 
-  void setDuration(int Duration) { this->Duration.second = Duration + this->Duration.first; }
+  bool isScheduled() { return this->Duration != -1; }
+
+  void setDuration(int Duration) { this->Duration = Duration; }
+
+  int getDuration() { return this->Duration; }
 
   void setDuration(InstructionCost Duration);
 
-  int getStartTime() { return this->Duration.first; }
+  void setSIFactor(int SIFactor) { this->SIFactor = SIFactor; }
 
-  int getEndTime() { return this->Duration.second; }
+  int getSIFactor() { return this->SIFactor; }
+
+  int getStartTime() { return this->StartTime; }
+
+  int getEndTime() { return this->Duration + this->StartTime; }
 
   void addPredecessor(OperationNode* Pred) { this->Predecessors.push_back(Pred); }
 
@@ -106,7 +119,7 @@ public:
 
   unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
 
-  DenseMap<Value*, OperationNode*> getScheduleMap(VPlan &Plan, ElementCount VF);
+  std::pair<DenseMap<Value*, OperationNode*>, int> getScheduleMap(VPlan &Plan, ElementCount VF);
 
   unsigned getSIFactor(VPlan &Plan);
 
@@ -118,7 +131,13 @@ public:
 
   SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr);
 
-  DenseMap<Value*, OperationNode*> applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules);
+  SmallSet<OperationNode*, 30> applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
+
+  SmallSet<OperationNode*, 30> getReadyNodes(SmallVector<DenseMap<Value*, OperationNode*>> schedules);
+
+  void setSIFactorForScheduleMap(DenseMap<Value*, OperationNode*> ScheduleMap, unsigned SIFactor);
+
+  OperationNode* selectNextNodeToSchedule(SmallSet<OperationNode*, 30> ReadyNodes, int ScheduleLength);
 };
 
 
