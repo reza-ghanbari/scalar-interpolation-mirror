@@ -126,7 +126,7 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *
     return 0;
   }
   unsigned SuggestedSI = (IsScalarInterpolationEnabled)
-                             ? getProfitableSIFactor(OrigLoop) : 0;
+                             ? getSIFactor(Plan) : 0;
   unsigned MaxSI = Plan.getMaximumSIF(MaxSafeElements);
   if (MaxSI < UserSI) {
     return MaxSI < SuggestedSI ? 0 : SuggestedSI;
@@ -152,7 +152,7 @@ Instruction *ScalarInterpolationCostModel::getUnderlyingInstructionOfRecipe(VPRe
   return Instr;
 }
 
-SmallVector<int, 6> ScalarInterpolationCostModel::getScalarResourcesFor(Instruction& Instr) {
+SmallVector<int, 6> ResourceHandlerX86::getScalarResourcesFor(Instruction& Instr) {
   switch (Instr.getOpcode()) {
   // Terminators
 //  case Ret:    return "ret";
@@ -219,7 +219,7 @@ SmallVector<int, 6> ScalarInterpolationCostModel::getScalarResourcesFor(Instruct
   }
 }
 
-SmallVector<int, 6> ScalarInterpolationCostModel::getVectorResourcesFor(Instruction& Instr) {
+SmallVector<int, 6> ResourceHandlerX86::getVectorResourcesFor(Instruction& Instr) {
   switch (Instr.getOpcode()) {
   case Instruction::IndirectBr:
   case Instruction::Br:     return {0, 6};
@@ -242,6 +242,23 @@ SmallVector<int, 6> ScalarInterpolationCostModel::getVectorResourcesFor(Instruct
   }
 }
 
-SmallVector<int, 6> ScalarInterpolationCostModel::getResourcesFor(llvm::Instruction &Instr, bool isVector) {
+SmallVector<int, 6> ResourceHandlerX86::getResourcesFor(llvm::Instruction &Instr, bool isVector) {
   return isVector ? getVectorResourcesFor(Instr) : getScalarResourcesFor(Instr);
+}
+
+int ResourceHandlerX86::scheduleInstructionOnResource(Instruction& Instr, bool isVector) {
+  auto Resources = getResourcesFor(Instr, isVector);
+  for (auto Resource : reverse(Resources)) {
+    if (isResourceAvailable(Resource)) {
+      setResourceUnavailable(Resource);
+      return Resource;
+    }
+  }
+  return -1;
+}
+
+bool ResourceHandlerX86::isResourceAvailableFor(Instruction& Instr, bool isVector) {
+  return any_of(getResourcesFor(Instr, isVector), [&](int Resource) {
+    return isResourceAvailable(Resource);
+  });
 }

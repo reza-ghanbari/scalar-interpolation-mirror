@@ -12,6 +12,34 @@ using namespace llvm;
 
 class OperationNode;
 
+class ResourceHandlerX86 {
+private:
+  SmallVector<bool> Resources;
+
+  SmallVector<int, 6> getResourcesFor(Instruction& Instr, bool isVector);
+
+  SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr);
+
+  SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr);
+
+public:
+  ResourceHandlerX86() {
+    for (int i = 0; i < 7; i++) {
+      Resources.push_back(true);
+    }
+  }
+
+  bool isResourceAvailable(int Resource) { return Resources[Resource]; }
+
+  void setResourceUnavailable(int Resource) { Resources[Resource] = false; }
+
+  void setResourceAvailable(int Resource) { Resources[Resource] = true; }
+
+  int scheduleInstructionOnResource(Instruction& Instr, bool isVector);
+
+  bool isResourceAvailableFor(Instruction& Instr, bool isVector);
+};
+
 class OperationNode {
 private:
   SmallVector<OperationNode*, 6> Predecessors;
@@ -25,6 +53,8 @@ private:
   Instruction* Instr;
 
   int SIFactor;
+
+  int Priority;
 
 public:
   OperationNode(Instruction* Instr, int StartTime): Instr(Instr) {
@@ -52,9 +82,15 @@ public:
 
   int getSIFactor() { return this->SIFactor; }
 
+  bool isVector() { return this->SIFactor == 0; }
+
   int getStartTime() { return this->StartTime; }
 
   int getEndTime() { return this->Duration + this->StartTime; }
+
+  int getPriority() { return this->Priority; }
+
+  void setPriority(int Priority) { this->Priority = Priority; }
 
   void addPredecessor(OperationNode* Pred) { this->Predecessors.push_back(Pred); }
 
@@ -85,6 +121,8 @@ private:
 
   ElementCount VF;
 
+  ResourceHandlerX86 ResourceHandler;
+
   DenseMap<const char *, DenseMap<Type *, unsigned>> InstructionTypeMap;
 
   bool HasReductions = false;
@@ -109,7 +147,9 @@ private:
 
 public:
   ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale)
-      : CM(CM), OrigLoop(OrigLoop), VScale(VScale) {};
+      : CM(CM), OrigLoop(OrigLoop), VScale(VScale) {
+        this->ResourceHandler = ResourceHandlerX86();
+  };
 
   Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
 
@@ -119,23 +159,19 @@ public:
 
   unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
 
-  std::pair<DenseMap<Value*, OperationNode*>, int> getScheduleMap(VPlan &Plan, ElementCount VF);
+  std::pair<DenseMap<Value*, OperationNode*>, int> getScheduleMap(VPlan &Plan, ElementCount VF, int SIF);
 
   unsigned getSIFactor(VPlan &Plan);
 
   ElementCount getProfitableVF(VPlan &Plan);
 
-  SmallVector<int, 6> getResourcesFor(Instruction& Instr, bool isVector);
-
-  SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr);
-
-  SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr);
-
-  SmallSet<OperationNode*, 30> applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
+  std::pair<SmallSet<OperationNode*, 30>, int> applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
 
   SmallSet<OperationNode*, 30> getReadyNodes(SmallVector<DenseMap<Value*, OperationNode*>> schedules);
 
   void setSIFactorForScheduleMap(DenseMap<Value*, OperationNode*> ScheduleMap, unsigned SIFactor);
+
+  void setPrioritiesForScheduleMap(DenseMap<Value*, OperationNode*> ScheduleMap);
 
   OperationNode* selectNextNodeToSchedule(SmallSet<OperationNode*, 30> ReadyNodes, int ScheduleLength);
 };
