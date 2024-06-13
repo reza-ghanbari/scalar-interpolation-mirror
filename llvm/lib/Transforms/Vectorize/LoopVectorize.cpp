@@ -9340,14 +9340,14 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   Plan->disableValue2VPValue();
 
   VPlanTransforms::removeDeadRecipes(*Plan);
+
   ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel(CM, OrigLoop, getVScaleForTuning(OrigLoop, TTI), 5);
   auto SmallestAndWidestTypes = CM.getSmallestAndWidestTypes();
   auto MaxLimit = llvm::bit_floor(Legal->getMaxSafeVectorWidthInBits() / SmallestAndWidestTypes.second);
   UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit, ScalarInterpolationEnabled);
-  if (ScalarInterpolationEnabled)
-    Plan->setSIF(SICostModel->getSIFactor(*Plan));
-  if (UserSI > 0)
-    VPlanTransforms::applyInterpolation(*Plan, OrigLoop);
+  Plan->setSIF(UserSI);
+  VPlanTransforms::applyInterpolation(*Plan, OrigLoop);
+
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
   VPlanTransforms::removeDeadRecipes(*Plan);
 

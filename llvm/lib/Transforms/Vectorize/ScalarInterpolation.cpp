@@ -125,15 +125,10 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *
   if (hasNonInterpolatableRecipe(Plan)) {
     return 0;
   }
-  unsigned SuggestedSI = (IsScalarInterpolationEnabled)
-                             ? getSIFactor(Plan) : 0;
+  unsigned SuggestedSI = (IsScalarInterpolationEnabled && UserSI == 0)
+                             ? getSIFactor(Plan) : UserSI;
   unsigned MaxSI = Plan.getMaximumSIF(MaxSafeElements);
-  if (MaxSI < UserSI) {
-    return MaxSI < SuggestedSI ? 0 : SuggestedSI;
-  }
-  if (UserSI == 0)
-    return SuggestedSI;
-  return UserSI;
+  return MaxSI < SuggestedSI ? 0 : SuggestedSI;
 }
 
 Instruction *ScalarInterpolationCostModel::getUnderlyingInstructionOfRecipe(VPRecipeBase &R) {
