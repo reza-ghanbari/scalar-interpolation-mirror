@@ -9340,7 +9340,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   Plan->disableValue2VPValue();
 
   VPlanTransforms::removeDeadRecipes(*Plan);
-  ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel(CM, OrigLoop, getVScaleForTuning(OrigLoop, TTI));
+  ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel(CM, OrigLoop, getVScaleForTuning(OrigLoop, TTI), 5);
   auto SmallestAndWidestTypes = CM.getSmallestAndWidestTypes();
   auto MaxLimit = llvm::bit_floor(Legal->getMaxSafeVectorWidthInBits() / SmallestAndWidestTypes.second);
   UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit, ScalarInterpolationEnabled);
@@ -10321,15 +10321,17 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   this->VF = getProfitableVF(Plan);
   auto VectorSchedule = getScheduleMap(Plan, this->VF, 0);
   SmallVector<DenseMap<Value*, OperationNode*>> Schedules = {VectorSchedule.first};
+  int BestScheduleLength = VectorSchedule.second;
   while (true) {
-    Schedules.push_back(getScheduleMap(Plan, ElementCount::getFixed(1), 1).first);
-    auto GreedySchedule = applyListScheduling(Schedules, VectorSchedule.second);
-    if (GreedySchedule.second >= VectorSchedule.second)
+    auto GreedySchedule = repeatListScheduling(Schedules, VectorSchedule.second);
+    if (SIFactor == 0)
+      BestScheduleLength = GreedySchedule.second;
+    if (GreedySchedule.second > BestScheduleLength)
       break;
     SIFactor++;
+    Schedules.push_back(getScheduleMap(Plan, ElementCount::getFixed(1), SIFactor).first);
   }
-//  errs() << "The final scalar interpolation factor is " << SIFactor << "\n";
-  return SIFactor;
+  return SIFactor - 1;
 }
 
 SmallSet<OperationNode*, 30> ScalarInterpolationCostModel::getReadyNodes(SmallVector<DenseMap<Value*, OperationNode*>> schedules) {
@@ -10342,6 +10344,28 @@ SmallSet<OperationNode*, 30> ScalarInterpolationCostModel::getReadyNodes(SmallVe
     }
   }
   return ReadyList;
+}
+
+DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::deepCopySchedule(DenseMap<Value*, OperationNode*> Schedule) {
+  DenseMap<Value*, OperationNode*> CopiedSchedule;
+  for (auto Item: Schedule) {
+    CopiedSchedule.insert({Item.first, new OperationNode(Item.second)});
+  }
+  // set up predecessors
+  for (auto Item: Schedule) {
+    auto Node = CopiedSchedule[Item.first];
+    for (auto Pred: Item.second->getPredecessors()) {
+      Node->addPredecessor(CopiedSchedule[Pred->getInstruction()]);
+    }
+  }
+  // set up successors
+  for (auto Item: Schedule) {
+    auto Node = CopiedSchedule[Item.first];
+    for (auto Succ: Item.second->getSuccessors()) {
+      Node->addSuccessor(CopiedSchedule[Succ->getInstruction()]);
+    }
+  }
+  return CopiedSchedule;
 }
 
 OperationNode* ScalarInterpolationCostModel::selectNextNodeToSchedule(SmallSet<OperationNode*, 30> ReadyList, int ScheduleLength) {
@@ -10360,7 +10384,32 @@ OperationNode* ScalarInterpolationCostModel::selectNextNodeToSchedule(SmallSet<O
   return NextNode;
 }
 
-std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength) {
+std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repeatListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> Schedules, int ScheduleLength) {
+  SmallVector<DenseMap<Value*, OperationNode*>> CopiedSchedules;
+  for (auto Schedule: Schedules) {
+    CopiedSchedules.push_back(deepCopySchedule(Schedule));
+  }
+  auto BestSchedule = runListScheduling(CopiedSchedules, ScheduleLength);
+  int MinScheduleLength = BestSchedule.second;
+  for (int i = 0; i < RepeatFactor - 1; i++) {
+    SmallVector<DenseMap<Value*, OperationNode*>> CopiedSchedules;
+    for (auto Schedule: Schedules) {
+      CopiedSchedules.push_back(deepCopySchedule(Schedule));
+    }
+    auto GreedySchedule = runListScheduling(CopiedSchedules, ScheduleLength);
+    if (GreedySchedule.second <= MinScheduleLength) {
+      BestSchedule = GreedySchedule;
+      MinScheduleLength = GreedySchedule.second;
+    } else {
+      for (auto Schedule: CopiedSchedules)
+        for (auto Item: Schedule)
+          delete Item.second;
+    }
+  }
+  return BestSchedule;
+}
+
+std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength) {
   auto ReadyList = getReadyNodes(schedules);
   DenseMap<OperationNode*, int> ExecutionList;
   SmallSet<OperationNode*, 30> ScheduleList = {};

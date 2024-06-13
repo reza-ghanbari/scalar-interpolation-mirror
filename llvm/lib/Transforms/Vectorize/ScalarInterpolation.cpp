@@ -247,14 +247,25 @@ SmallVector<int, 6> ResourceHandlerX86::getResourcesFor(llvm::Instruction &Instr
 }
 
 int ResourceHandlerX86::scheduleInstructionOnResource(Instruction& Instr, bool isVector) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> dis(0.0, 1.0);
   auto Resources = getResourcesFor(Instr, isVector);
-  for (auto Resource : reverse(Resources)) {
-    if (isResourceAvailable(Resource)) {
-      setResourceUnavailable(Resource);
-      return Resource;
+  SmallVector<int, 6> AvailableResources;
+  for (auto Resource : reverse(Resources))
+    if (isResourceAvailable(Resource))
+      AvailableResources.push_back(Resource);
+  int SelectedResource = -1;
+  float MaxScore = 0;
+  for (auto Resource : AvailableResources) {
+    float Score = Priorities[Resource] * (1 - RandomWeight) + RandomWeight * dis(gen);
+    if (Score > MaxScore) {
+      MaxScore = Score;
+      SelectedResource = Resource;
     }
   }
-  return -1;
+  setResourceUnavailable(SelectedResource);
+  return SelectedResource;
 }
 
 bool ResourceHandlerX86::isResourceAvailableFor(Instruction& Instr, bool isVector) {

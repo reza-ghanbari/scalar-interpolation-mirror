@@ -7,6 +7,7 @@
 
 #include "LoopVectorizationPlanner.h"
 #include "llvm/IR/Instruction.h"
+#include <random>
 
 using namespace llvm;
 
@@ -14,7 +15,11 @@ class OperationNode;
 
 class ResourceHandlerX86 {
 private:
+  float RandomWeight;
+
   SmallVector<bool> Resources;
+
+  SmallVector<float> Priorities;
 
   SmallVector<int, 6> getResourcesFor(Instruction& Instr, bool isVector);
 
@@ -23,9 +28,10 @@ private:
   SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr);
 
 public:
-  ResourceHandlerX86() {
+  ResourceHandlerX86(float RandomWeight): RandomWeight(RandomWeight) {
     for (int i = 0; i < 7; i++) {
       Resources.push_back(true);
+      Priorities.push_back((i / 7));
     }
   }
 
@@ -60,6 +66,12 @@ public:
   OperationNode(Instruction* Instr, int StartTime): Instr(Instr) {
     this->StartTime = StartTime;
     this->Duration = -1;
+    this->Predecessors = {};
+    this->Successors = {};
+  }
+
+  OperationNode(OperationNode* Node): StartTime(Node->StartTime), Duration(Node->Duration)
+                                       , Instr(Node->Instr), SIFactor(Node->SIFactor), Priority(Node->Priority) {
     this->Predecessors = {};
     this->Successors = {};
   }
@@ -123,6 +135,8 @@ private:
 
   ResourceHandlerX86 ResourceHandler;
 
+  int RepeatFactor;
+
   DenseMap<const char *, DenseMap<Type *, unsigned>> InstructionTypeMap;
 
   bool HasReductions = false;
@@ -146,10 +160,8 @@ private:
   OperationNode* getScheduleOf(VPRecipeBase& R, DenseMap<Value*, OperationNode*> ReadyValues);
 
 public:
-  ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale)
-      : CM(CM), OrigLoop(OrigLoop), VScale(VScale) {
-        this->ResourceHandler = ResourceHandlerX86();
-  };
+  ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int RepeatFactor)
+      : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResourceHandler(ResourceHandlerX86(0.5)), RepeatFactor(RepeatFactor) {}
 
   Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
 
@@ -161,11 +173,15 @@ public:
 
   std::pair<DenseMap<Value*, OperationNode*>, int> getScheduleMap(VPlan &Plan, ElementCount VF, int SIF);
 
+  DenseMap<Value*, OperationNode*> deepCopySchedule(DenseMap<Value*, OperationNode*> Schedule);
+
   unsigned getSIFactor(VPlan &Plan);
 
   ElementCount getProfitableVF(VPlan &Plan);
 
-  std::pair<SmallSet<OperationNode*, 30>, int> applyListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
+  std::pair<SmallSet<OperationNode*, 30>, int> runListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
+
+  std::pair<SmallSet<OperationNode*, 30>, int> repeatListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
 
   SmallSet<OperationNode*, 30> getReadyNodes(SmallVector<DenseMap<Value*, OperationNode*>> schedules);
 
