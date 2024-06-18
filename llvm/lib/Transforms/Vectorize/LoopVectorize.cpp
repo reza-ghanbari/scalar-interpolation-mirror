@@ -10373,7 +10373,7 @@ OperationNode* ScalarInterpolationCostModel::selectNextNodeToSchedule(SmallSet<O
   int HighestPriority = -ScheduleLength;
   for (auto Node: ReadyList) {
 //    TODO-SI: check the availability of the resources
-    if (!ResourceHandler.isResourceAvailableFor(*Node->getInstruction(), Node->isVector()))
+    if (!ResHandler->isResourceAvailableFor(*Node->getInstruction(), Node->isVector()))
       continue;
     int NodePriority = Node->getPriority();
     if (NodePriority > HighestPriority) {
@@ -10425,7 +10425,7 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runLi
     auto NextNode = selectNextNodeToSchedule(ReadyList, ScheduleLength);
     while (NextNode) {
       NextNode->setStartTime(Cycle);
-      ExecutionList[NextNode] = ResourceHandler.scheduleInstructionOnResource(*NextNode->getInstruction(), NextNode->getSIFactor() == 0);
+      ExecutionList[NextNode] = ResHandler->scheduleInstructionOnResource(*NextNode->getInstruction(), NextNode->getSIFactor() == 0);
       ReadyList.erase(NextNode);
       for (auto Successor: NextNode->getSuccessors()) {
         if (all_of(Successor->getPredecessors(), [&ScheduleList, &ExecutionList, Cycle](auto& Item)
@@ -10446,7 +10446,7 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runLi
       auto Node = NodePair.first;
       if (Node->getEndTime() <= Cycle) {
         ScheduleList.insert(Node);
-        ResourceHandler.setResourceAvailable(ExecutionList[Node]);
+        ResHandler->setResourceAvailable(ExecutionList[Node]);
         ExecutionList.erase(Node);
         for (auto Successor: Node->getSuccessors()) {
           if (all_of(Successor->getPredecessors(), [&ScheduleList, &ExecutionList, Cycle](auto& Item)

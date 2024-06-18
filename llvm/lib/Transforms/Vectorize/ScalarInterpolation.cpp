@@ -237,11 +237,11 @@ SmallVector<int, 6> ResourceHandlerX86::getVectorResourcesFor(Instruction& Instr
   }
 }
 
-SmallVector<int, 6> ResourceHandlerX86::getResourcesFor(llvm::Instruction &Instr, bool isVector) {
+SmallVector<int, 6> ResourceHandler::getResourcesFor(llvm::Instruction &Instr, bool isVector) {
   return isVector ? getVectorResourcesFor(Instr) : getScalarResourcesFor(Instr);
 }
 
-int ResourceHandlerX86::scheduleInstructionOnResource(Instruction& Instr, bool isVector) {
+int ResourceHandler::scheduleInstructionOnResource(Instruction& Instr, bool isVector) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(0.0, 1.0);
@@ -263,7 +263,7 @@ int ResourceHandlerX86::scheduleInstructionOnResource(Instruction& Instr, bool i
   return SelectedResource;
 }
 
-bool ResourceHandlerX86::isResourceAvailableFor(Instruction& Instr, bool isVector) {
+bool ResourceHandler::isResourceAvailableFor(Instruction& Instr, bool isVector) {
   return any_of(getResourcesFor(Instr, isVector), [&](int Resource) {
     return isResourceAvailable(Resource);
   });

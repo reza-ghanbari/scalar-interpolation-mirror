@@ -13,27 +13,23 @@ using namespace llvm;
 
 class OperationNode;
 
-class ResourceHandlerX86 {
-private:
+class ResourceHandler {
+protected:
   float RandomWeight;
 
   SmallVector<bool> Resources;
 
   SmallVector<float> Priorities;
 
+  virtual SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr) = 0;
+
+  virtual SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr) = 0;
+
+private:
   SmallVector<int, 6> getResourcesFor(Instruction& Instr, bool isVector);
 
-  SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr);
-
-  SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr);
-
 public:
-  ResourceHandlerX86(float RandomWeight): RandomWeight(RandomWeight) {
-    for (int i = 0; i < 7; i++) {
-      Resources.push_back(true);
-      Priorities.push_back((i / 7));
-    }
-  }
+  ResourceHandler(float RandomWeight): RandomWeight(RandomWeight) {}
 
   bool isResourceAvailable(int Resource) { return Resources[Resource]; }
 
@@ -44,6 +40,20 @@ public:
   int scheduleInstructionOnResource(Instruction& Instr, bool isVector);
 
   bool isResourceAvailableFor(Instruction& Instr, bool isVector);
+};
+
+class ResourceHandlerX86: public ResourceHandler {
+public:
+  ResourceHandlerX86(float RandomWeight): ResourceHandler(RandomWeight) {
+    for (int i = 0; i < 7; i++) {
+      Resources.push_back(true);
+      Priorities.push_back((i / 7));
+    }
+  }
+
+  virtual SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr) override;
+
+  virtual SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr) override;
 };
 
 class OperationNode {
@@ -133,7 +143,7 @@ private:
 
   ElementCount VF;
 
-  ResourceHandlerX86 ResourceHandler;
+  ResourceHandler* ResHandler;
 
   int RepeatFactor;
 
@@ -161,7 +171,7 @@ private:
 
 public:
   ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int RepeatFactor)
-      : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResourceHandler(ResourceHandlerX86(0.5)), RepeatFactor(RepeatFactor) {}
+      : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResHandler(new ResourceHandlerX86(0.5)), RepeatFactor(RepeatFactor) {}
 
   Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
 
