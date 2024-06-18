@@ -56,6 +56,21 @@ public:
   virtual SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr) override;
 };
 
+class ResourceHandlerTSV110: public ResourceHandler {
+public:
+  ResourceHandlerTSV110(float RandomWeight): ResourceHandler(RandomWeight) {
+    for (int i = 0; i < 8; i++) {
+      Resources.push_back(true);
+      Priorities.push_back(0.5);
+    }
+    Priorities[0] = 1;
+  }
+
+  virtual SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr) override;
+
+  virtual SmallVector<int, 6> getVectorResourcesFor(Instruction& Instr) override;
+};
+
 class OperationNode {
 private:
   SmallVector<OperationNode*, 6> Predecessors;

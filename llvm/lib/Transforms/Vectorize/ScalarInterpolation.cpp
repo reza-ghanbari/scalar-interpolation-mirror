@@ -237,6 +237,140 @@ SmallVector<int, 6> ResourceHandlerX86::getVectorResourcesFor(Instruction& Instr
   }
 }
 
+SmallVector<int, 6> ResourceHandlerTSV110::getScalarResourcesFor(Instruction& Instr) {
+  switch (Instr.getOpcode()) {
+    // Terminators
+    //  case Ret:    return "ret";
+  case Instruction::IndirectBr:
+  case Instruction::Br:     return {1, 2};
+    //  // Standard binary operators...
+  case Instruction::Trunc:
+  case Instruction::ZExt:
+  case Instruction::SExt:
+  case Instruction::And:
+  case Instruction::Or :
+  case Instruction::Xor:
+  case Instruction::Add:
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+  case Instruction::Sub: return {0, 1, 2};
+  case Instruction::Mul:
+  case Instruction::UDiv:
+  case Instruction::SDiv:
+  case Instruction::URem:
+  case Instruction::SRem: return {3};
+  case Instruction::Load:
+  case Instruction::Store: return {6, 7};
+  default: return {};
+    //
+    //  // Memory instructions...
+    //  case Instruction::Alloca:        return "alloca";
+    //  case Instruction::AtomicCmpXchg: return "cmpxchg";
+    //  case Instruction::AtomicRMW:     return "atomicrmw";
+    //  case Instruction::Fence:         return "fence";
+    //  case Instruction::GetElementPtr: return "getelementptr";
+    //
+    //  // Convert instructions...
+
+    //  case Instruction::FPTrunc:       return "fptrunc";
+    //  case Instruction::FPExt:         return "fpext";
+    //  case Instruction::FPToUI:        return "fptoui";
+    //  case Instruction::FPToSI:        return "fptosi";
+    //  case Instruction::UIToFP:        return "uitofp";
+    //  case Instruction::SIToFP:        return "sitofp";
+    //  case Instruction::IntToPtr:      return "inttoptr";
+    //  case Instruction::PtrToInt:      return "ptrtoint";
+    //  case Instruction::BitCast:       return "bitcast";
+    //  case Instruction::AddrSpaceCast: return "addrspacecast";
+    //
+    //  // Other instructions...
+    //  case Instruction::ICmp:           return "icmp";
+    //  case Instruction::FCmp:           return "fcmp";
+    //  case Instruction::PHI:            return "phi";
+    //  case Instruction::Select:         return "select";
+    //  case Instruction::Call:           return "call";
+
+    //  case Instruction::VAArg:          return "va_arg";
+    //  case Instruction::ExtractElement: return "extractelement";
+    //  case Instruction::InsertElement:  return "insertelement";
+    //  case Instruction::ShuffleVector:  return "shufflevector";
+    //  case Instruction::ExtractValue:   return "extractvalue";
+    //  case Instruction::InsertValue:    return "insertvalue";
+    //  case Instruction::LandingPad:     return "landingpad";
+    //  case Instruction::CleanupPad:     return "cleanuppad";
+    //  case Instruction::Freeze:         return "freeze";
+    //
+  }
+}
+
+SmallVector<int, 6> ResourceHandlerTSV110::getVectorResourcesFor(Instruction& Instr) {
+  switch (Instr.getOpcode()) {
+    // Terminators
+    //  case Ret:    return "ret";
+  case Instruction::IndirectBr:
+  case Instruction::Br:     return {1, 2};
+    //  // Standard binary operators...
+  case Instruction::Trunc:
+  case Instruction::ZExt:
+  case Instruction::SExt:
+  case Instruction::And:
+  case Instruction::Or :
+  case Instruction::Xor:
+  case Instruction::Add:
+  case Instruction::Sub: return {4, 5};
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+  case Instruction::Mul: return {4};
+  case Instruction::UDiv:
+  case Instruction::SDiv:
+  case Instruction::URem:
+  case Instruction::SRem: return {3};
+  case Instruction::Load:
+  case Instruction::Store: return {6, 7};
+  default: return {};
+    //
+    //  // Memory instructions...
+    //  case Instruction::Alloca:        return "alloca";
+    //  case Instruction::AtomicCmpXchg: return "cmpxchg";
+    //  case Instruction::AtomicRMW:     return "atomicrmw";
+    //  case Instruction::Fence:         return "fence";
+    //  case Instruction::GetElementPtr: return "getelementptr";
+    //
+    //  // Convert instructions...
+
+    //  case Instruction::FPTrunc:       return "fptrunc";
+    //  case Instruction::FPExt:         return "fpext";
+    //  case Instruction::FPToUI:        return "fptoui";
+    //  case Instruction::FPToSI:        return "fptosi";
+    //  case Instruction::UIToFP:        return "uitofp";
+    //  case Instruction::SIToFP:        return "sitofp";
+    //  case Instruction::IntToPtr:      return "inttoptr";
+    //  case Instruction::PtrToInt:      return "ptrtoint";
+    //  case Instruction::BitCast:       return "bitcast";
+    //  case Instruction::AddrSpaceCast: return "addrspacecast";
+    //
+    //  // Other instructions...
+    //  case Instruction::ICmp:           return "icmp";
+    //  case Instruction::FCmp:           return "fcmp";
+    //  case Instruction::PHI:            return "phi";
+    //  case Instruction::Select:         return "select";
+    //  case Instruction::Call:           return "call";
+
+    //  case Instruction::VAArg:          return "va_arg";
+    //  case Instruction::ExtractElement: return "extractelement";
+    //  case Instruction::InsertElement:  return "insertelement";
+    //  case Instruction::ShuffleVector:  return "shufflevector";
+    //  case Instruction::ExtractValue:   return "extractvalue";
+    //  case Instruction::InsertValue:    return "insertvalue";
+    //  case Instruction::LandingPad:     return "landingpad";
+    //  case Instruction::CleanupPad:     return "cleanuppad";
+    //  case Instruction::Freeze:         return "freeze";
+    //
+  }
+}
+
 SmallVector<int, 6> ResourceHandler::getResourcesFor(llvm::Instruction &Instr, bool isVector) {
   return isVector ? getVectorResourcesFor(Instr) : getScalarResourcesFor(Instr);
 }

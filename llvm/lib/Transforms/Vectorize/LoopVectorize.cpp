@@ -10390,6 +10390,17 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
     CopiedSchedules.push_back(deepCopySchedule(Schedule));
   }
   auto BestSchedule = runListScheduling(CopiedSchedules, ScheduleLength);
+
+//  SmallVector<OperationNode*> Nodes(BestSchedule.first.begin(), BestSchedule.first.end());
+//  llvm::sort(Nodes, [](OperationNode* A, OperationNode* B) {
+//    return A->getStartTime() < B->getStartTime()
+//           || (A->getStartTime() == B->getStartTime() && A->getEndTime() < B->getEndTime());
+//  });
+//  errs() << "\n\n\n\nSI: SCHEDULE\n";
+//  for (auto Node: Nodes) {
+//    errs() << "SI: Node: " << *Node->getInstruction() << "\n\tStart: " << Node->getStartTime() << " End: " << Node->getEndTime() << "\n";
+//  }
+//  errs() << "SI: END OF SCHEDULE\n\n\n\n";
   int MinScheduleLength = BestSchedule.second;
   for (int i = 0; i < RepeatFactor - 1; i++) {
     SmallVector<DenseMap<Value*, OperationNode*>> CopiedSchedules;
