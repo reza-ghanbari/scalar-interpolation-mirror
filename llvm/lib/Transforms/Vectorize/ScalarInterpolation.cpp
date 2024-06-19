@@ -106,6 +106,24 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(Loop *OrigLoop) {
   }
 }
 
+bool ScalarInterpolationCostModel::isLegalToInterpolate(llvm::VPlan &Plan) {
+  if (hasNonInterpolatableRecipe(Plan))
+    return false;
+  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
+      Plan.getEntry());
+  for (VPBasicBlock *VPBB: reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
+    bool HasFloatInstructions = any_of(*VPBB, [&](VPRecipeBase &R) {
+      auto* Instr = getUnderlyingInstructionOfRecipe(R);
+      if (!Instr)
+        return false;
+      return Instr->getType()->isFloatingPointTy();
+    });
+    if (HasFloatInstructions)
+      return false;
+  }
+  return true;
+}
+
 bool ScalarInterpolationCostModel::hasNonInterpolatableRecipe(llvm::VPlan &Plan) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
@@ -122,9 +140,8 @@ bool ScalarInterpolationCostModel::hasNonInterpolatableRecipe(llvm::VPlan &Plan)
 }
 
 unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled) {
-  if (hasNonInterpolatableRecipe(Plan)) {
+  if (!isLegalToInterpolate(Plan))
     return 0;
-  }
   unsigned SuggestedSI = (IsScalarInterpolationEnabled && UserSI == 0)
                              ? getSIFactor(Plan) : UserSI;
   unsigned MaxSI = Plan.getMaximumSIF(MaxSafeElements);
@@ -158,12 +175,13 @@ SmallVector<int, 6> ResourceHandlerX86::getScalarResourcesFor(Instruction& Instr
   case Instruction::ZExt:
   case Instruction::SExt:
   case Instruction::And:
-  case Instruction::Or :
+  case Instruction::Or:
   case Instruction::Xor:
   case Instruction::Add:
   case Instruction::Shl:
   case Instruction::LShr:
   case Instruction::AShr:
+  case Instruction::ICmp:
   case Instruction::Sub: return {0, 1, 5, 6};
   case Instruction::Mul: return {1};
   case Instruction::UDiv:
@@ -217,7 +235,7 @@ SmallVector<int, 6> ResourceHandlerX86::getScalarResourcesFor(Instruction& Instr
 SmallVector<int, 6> ResourceHandlerX86::getVectorResourcesFor(Instruction& Instr) {
   switch (Instr.getOpcode()) {
   case Instruction::IndirectBr:
-  case Instruction::Br:     return {0, 6};
+  case Instruction::Br: return {0, 6};
   case Instruction::Trunc:
   case Instruction::ZExt:
   case Instruction::SExt:
@@ -228,11 +246,16 @@ SmallVector<int, 6> ResourceHandlerX86::getVectorResourcesFor(Instruction& Instr
   case Instruction::Shl:
   case Instruction::LShr:
   case Instruction::AShr:
+  case Instruction::ICmp:
   case Instruction::Sub: return {0, 1, 5};
   case Instruction::Mul: return {0, 1};
-  case Instruction::Load:          return {2, 3};
-  case Instruction::Store:         return {4};
-  case Instruction::ShuffleVector:  return {5};
+  case Instruction::UDiv:
+  case Instruction::SDiv:
+  case Instruction::URem:
+  case Instruction::SRem: return {0};
+  case Instruction::Load: return {2, 3};
+  case Instruction::Store: return {4};
+  case Instruction::ShuffleVector: return {5};
   default: return {};
   }
 }
@@ -254,6 +277,7 @@ SmallVector<int, 6> ResourceHandlerTSV110::getScalarResourcesFor(Instruction& In
   case Instruction::Shl:
   case Instruction::LShr:
   case Instruction::AShr:
+  case Instruction::Select:
   case Instruction::Sub: return {0, 1, 2};
   case Instruction::Mul:
   case Instruction::UDiv:
@@ -262,6 +286,7 @@ SmallVector<int, 6> ResourceHandlerTSV110::getScalarResourcesFor(Instruction& In
   case Instruction::SRem: return {3};
   case Instruction::Load:
   case Instruction::Store: return {6, 7};
+  case Instruction::ICmp: return {1};
   default: return {};
     //
     //  // Memory instructions...
@@ -285,7 +310,6 @@ SmallVector<int, 6> ResourceHandlerTSV110::getScalarResourcesFor(Instruction& In
     //  case Instruction::AddrSpaceCast: return "addrspacecast";
     //
     //  // Other instructions...
-    //  case Instruction::ICmp:           return "icmp";
     //  case Instruction::FCmp:           return "fcmp";
     //  case Instruction::PHI:            return "phi";
     //  case Instruction::Select:         return "select";
@@ -318,6 +342,7 @@ SmallVector<int, 6> ResourceHandlerTSV110::getVectorResourcesFor(Instruction& In
   case Instruction::Or :
   case Instruction::Xor:
   case Instruction::Add:
+  case Instruction::ICmp:
   case Instruction::Sub: return {4, 5};
   case Instruction::Shl:
   case Instruction::LShr:

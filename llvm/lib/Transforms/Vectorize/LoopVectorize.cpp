@@ -10447,6 +10447,11 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runLi
       NextNode = selectNextNodeToSchedule(ReadyList, ScheduleLength);
     }
     Cycle++;
+//    errs() << "\n\nSI: Cycle " << Cycle << ". Here is Ready List contents:\n";
+//    for (auto Item: ReadyList) {
+//      Item->print(errs());
+//    }
+//    errs() << "SI: End of Ready List\n\n";
 //    errs() << "\n\nSI: Cycle " << Cycle << ". Here is Execution List contents:\n";
 //    for (auto Item: ExecutionList) {
 //      Item.first->print(errs());

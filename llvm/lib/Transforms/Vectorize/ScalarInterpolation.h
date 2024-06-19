@@ -64,6 +64,8 @@ public:
       Priorities.push_back(0.5);
     }
     Priorities[0] = 1;
+    Priorities[2] = 0.25;
+    Priorities[4] = 0.5;
   }
 
   virtual SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr) override;
@@ -191,6 +193,8 @@ public:
   Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
 
   bool hasNonInterpolatableRecipe(VPlan& Plan);
+
+  bool isLegalToInterpolate(VPlan& Plan);
 
   bool containsNonInterpolatableRecipe(VPlan& Plan);
 
