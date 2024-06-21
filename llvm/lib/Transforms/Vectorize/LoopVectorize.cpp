@@ -9607,9 +9607,18 @@ void VPWidenIntOrFpInductionRecipe::execute(VPTransformState &State) {
   // FIXME: If the step is non-constant, we create the vector splat with
   //        IRBuilder. IRBuilder can constant-fold the multiply, but it doesn't
   //        handle a constant vector splat.
-  Value *SplatVF = isa<Constant>(Mul)
-                       ? ConstantVector::getSplat(State.VF, cast<Constant>(Mul))
-                       : Builder.CreateVectorSplat(State.VF, Mul);
+  Value *SplatVF = nullptr;
+  if (!Step->getType()->isFloatingPointTy()) {
+    Value *UpdatedMul = Builder.CreateAdd(
+        Builder.CreateBinOp(MulOp, Step, ConstantInt::get(Mul->getType(), State.SIFactor)), Mul);
+    SplatVF = isa<Constant>(Mul)
+            ? ConstantVector::getSplat(State.VF, cast<Constant>(UpdatedMul))
+            : Builder.CreateVectorSplat(State.VF, UpdatedMul);
+  } else {
+    SplatVF = isa<Constant>(Mul)
+            ? ConstantVector::getSplat(State.VF, cast<Constant>(Mul))
+            : Builder.CreateVectorSplat(State.VF, Mul);
+  }
   Builder.restoreIP(CurrIP);
 
   // We may need to add the step a number of times, depending on the unroll
