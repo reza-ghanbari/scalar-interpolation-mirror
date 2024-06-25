@@ -10328,6 +10328,7 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   int SIFactor = 0;
   this->VF = getProfitableVF(Plan);
   auto VectorSchedule = getScheduleMap(Plan, this->VF, 0);
+  auto ScalarSchedule = getScheduleMap(Plan, ElementCount::getFixed(1), SIFactor);
   SmallVector<DenseMap<Value*, OperationNode*>> Schedules = {VectorSchedule.first};
   int BestScheduleLength = VectorSchedule.second;
   while (true) {
@@ -10336,10 +10337,16 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
       BestScheduleLength = GreedySchedule.second;
     if (GreedySchedule.second > BestScheduleLength)
       break;
-    SIFactor++;
-    Schedules.push_back(getScheduleMap(Plan, ElementCount::getFixed(1), SIFactor).first);
+    if (SIFactor == 0) {
+      Schedules.push_back(ScalarSchedule.first);
+      SIFactor += 1;
+    } else {
+      for (int i = 0; i < SIFactor; ++i)
+        Schedules.push_back(ScalarSchedule.first);
+      SIFactor *= 2;
+    }
   }
-  return SIFactor - 1;
+  return (SIFactor == 1) ? 0 : (SIFactor / 2);
 }
 
 SmallSet<OperationNode*, 30> ScalarInterpolationCostModel::getReadyNodes(SmallVector<DenseMap<Value*, OperationNode*>> schedules) {
