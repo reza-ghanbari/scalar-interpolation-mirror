@@ -10397,7 +10397,7 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
   for (auto Schedule: Schedules) {
     CopiedSchedules.push_back(deepCopySchedule(Schedule));
   }
-  auto BestSchedule = runListScheduling(CopiedSchedules, ScheduleLength);
+  auto BestSchedule = runListScheduling(CopiedSchedules, ScheduleLength, 1);
 
 //  SmallVector<OperationNode*> Nodes(BestSchedule.first.begin(), BestSchedule.first.end());
 //  llvm::sort(Nodes, [](OperationNode* A, OperationNode* B) {
@@ -10410,12 +10410,12 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
 //  }
 //  errs() << "SI: END OF SCHEDULE\n\n\n\n";
   int MinScheduleLength = BestSchedule.second;
-  for (int i = 0; i < RepeatFactor - 1; i++) {
+  for (int i = 1; i < RepeatFactor; i++) {
     SmallVector<DenseMap<Value*, OperationNode*>> CopiedSchedules;
     for (auto Schedule: Schedules) {
       CopiedSchedules.push_back(deepCopySchedule(Schedule));
     }
-    auto GreedySchedule = runListScheduling(CopiedSchedules, ScheduleLength);
+    auto GreedySchedule = runListScheduling(CopiedSchedules, ScheduleLength, 1 / (i + 1));
     if (GreedySchedule.second <= MinScheduleLength) {
       BestSchedule = GreedySchedule;
       MinScheduleLength = GreedySchedule.second;
@@ -10428,7 +10428,7 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
   return BestSchedule;
 }
 
-std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength) {
+std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength, float RandomWeight) {
   auto ReadyList = getReadyNodes(schedules);
   DenseMap<OperationNode*, int> ExecutionList;
   SmallSet<OperationNode*, 30> ScheduleList = {};
@@ -10444,7 +10444,7 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runLi
     auto NextNode = selectNextNodeToSchedule(ReadyList, ScheduleLength);
     while (NextNode) {
       NextNode->setStartTime(Cycle);
-      ExecutionList[NextNode] = ResHandler->scheduleInstructionOnResource(*NextNode->getInstruction(), NextNode->getSIFactor() == 0);
+      ExecutionList[NextNode] = ResHandler->scheduleInstructionOnResource(*NextNode->getInstruction(), NextNode->getSIFactor() == 0, RandomWeight);
       ReadyList.erase(NextNode);
       for (auto Successor: NextNode->getSuccessors()) {
         if (all_of(Successor->getPredecessors(), [&ScheduleList, &ExecutionList, Cycle](auto& Item)

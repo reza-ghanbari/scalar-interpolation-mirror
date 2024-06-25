@@ -15,11 +15,11 @@ class OperationNode;
 
 class ResourceHandler {
 protected:
-  float RandomWeight;
-
   SmallVector<bool> Resources;
 
   SmallVector<float> Priorities;
+
+  void initialize(SmallVector<SmallVector<int>> PortUniqueness);
 
   virtual SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr) = 0;
 
@@ -29,7 +29,7 @@ private:
   SmallVector<int, 6> getResourcesFor(Instruction& Instr, bool isVector);
 
 public:
-  ResourceHandler(float RandomWeight): RandomWeight(RandomWeight) {}
+  ResourceHandler() {}
 
   bool isResourceAvailable(int Resource) { return Resources[Resource]; }
 
@@ -37,18 +37,24 @@ public:
 
   void setResourceAvailable(int Resource) { Resources[Resource] = true; }
 
-  int scheduleInstructionOnResource(Instruction& Instr, bool isVector);
+  int scheduleInstructionOnResource(Instruction& Instr, bool isVector, float RandomWeight);
 
   bool isResourceAvailableFor(Instruction& Instr, bool isVector);
 };
 
 class ResourceHandlerX86: public ResourceHandler {
 public:
-  ResourceHandlerX86(float RandomWeight): ResourceHandler(RandomWeight) {
-    for (int i = 0; i < 7; i++) {
-      Resources.push_back(true);
-      Priorities.push_back((i / 7));
-    }
+  ResourceHandlerX86(): ResourceHandler() {
+    this->initialize({
+        {4, 1, 3, 2, 1, 2},
+        {4, 1, 3, 2, 1},
+        {4, 1, 3, 1},
+        {4, 2},
+        {3, 2},
+        {3, 2},
+        {1},
+        {3}
+    });
   }
 
   virtual SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr) override;
@@ -58,14 +64,17 @@ public:
 
 class ResourceHandlerTSV110: public ResourceHandler {
 public:
-  ResourceHandlerTSV110(float RandomWeight): ResourceHandler(RandomWeight) {
-    for (int i = 0; i < 8; i++) {
-      Resources.push_back(true);
-      Priorities.push_back(0.5);
-    }
-    Priorities[0] = 1;
-    Priorities[2] = 0.25;
-    Priorities[4] = 0.5;
+  ResourceHandlerTSV110(): ResourceHandler() {
+    this->initialize({
+        {3},
+        {2, 1, 3},
+        {2, 3},
+        {1, 1},
+        {2, 1, 1},
+        {2},
+        {2, 2},
+        {2, 2}
+    });
   }
 
   virtual SmallVector<int, 6> getScalarResourcesFor(Instruction& Instr) override;
@@ -188,7 +197,7 @@ private:
 
 public:
   ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int RepeatFactor)
-      : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResHandler(new ResourceHandlerX86(0.5)), RepeatFactor(RepeatFactor) {}
+      : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResHandler(new ResourceHandlerX86()), RepeatFactor(RepeatFactor) {}
 
   Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
 
@@ -208,7 +217,7 @@ public:
 
   ElementCount getProfitableVF(VPlan &Plan);
 
-  std::pair<SmallSet<OperationNode*, 30>, int> runListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
+  std::pair<SmallSet<OperationNode*, 30>, int> runListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength, float RandomWeight);
 
   std::pair<SmallSet<OperationNode*, 30>, int> repeatListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength);
 

@@ -188,8 +188,8 @@ SmallVector<int, 6> ResourceHandlerX86::getScalarResourcesFor(Instruction& Instr
   case Instruction::SDiv:
   case Instruction::URem:
   case Instruction::SRem: return {0};
-  case Instruction::Load:          return {2, 3};
-  case Instruction::Store:         return {4};
+  case Instruction::Load: return {2, 3};
+  case Instruction::Store: return {4};
   default: return {};
 //
 //  // Memory instructions...
@@ -400,19 +400,28 @@ SmallVector<int, 6> ResourceHandler::getResourcesFor(llvm::Instruction &Instr, b
   return isVector ? getVectorResourcesFor(Instr) : getScalarResourcesFor(Instr);
 }
 
-int ResourceHandler::scheduleInstructionOnResource(Instruction& Instr, bool isVector) {
+void ResourceHandler::initialize(SmallVector<SmallVector<int>> PortUniqueness) {
+  for (auto Port: PortUniqueness) {
+    Resources.push_back(true);
+    float UniquenessScore = 0;
+    for (auto S: Port)
+      UniquenessScore += S;
+    Priorities.push_back(PortUniqueness.size() * Port.size() - UniquenessScore);
+  }
+}
+
+int ResourceHandler::scheduleInstructionOnResource(Instruction& Instr, bool IsVector, float RandomWeight) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(0.0, 1.0);
-  auto Resources = getResourcesFor(Instr, isVector);
   SmallVector<int, 6> AvailableResources;
-  for (auto Resource : reverse(Resources))
+  for (auto Resource : getResourcesFor(Instr, IsVector))
     if (isResourceAvailable(Resource))
       AvailableResources.push_back(Resource);
   int SelectedResource = -1;
   float MaxScore = 0;
   for (auto Resource : AvailableResources) {
-    float Score = Priorities[Resource] * (1 - RandomWeight) + RandomWeight * dis(gen);
+    float Score = (1 - RandomWeight) / Priorities[Resource] + RandomWeight * dis(gen);
     if (Score > MaxScore) {
       MaxScore = Score;
       SelectedResource = Resource;
