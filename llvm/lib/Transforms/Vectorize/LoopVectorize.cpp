@@ -9341,7 +9341,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
 
   VPlanTransforms::removeDeadRecipes(*Plan);
 
-  ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel(CM, OrigLoop, getVScaleForTuning(OrigLoop, TTI), 5);
+  ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel(CM, OrigLoop, getVScaleForTuning(OrigLoop, TTI), 80, 10);
   auto MaxLimit = llvm::bit_floor(Legal->getMaxSafeVectorWidthInBits() / CM.getSmallestAndWidestTypes().second);
   UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit, ScalarInterpolationEnabled);
   Plan->setSIF(UserSI);
@@ -10417,16 +10417,19 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
 //  }
 //  errs() << "SI: END OF SCHEDULE\n\n\n\n";
   int MinScheduleLength = BestSchedule.second;
-  for (int i = 1; i < RepeatFactor; i++) {
+  int StableScheduleLengthCounter = 0;
+  for (int i = 1; i < Budget && StableScheduleLengthCounter < StabilityLimit; i++) {
     SmallVector<DenseMap<Value*, OperationNode*>> CopiedSchedules;
     for (auto Schedule: Schedules) {
       CopiedSchedules.push_back(deepCopySchedule(Schedule));
     }
     auto GreedySchedule = runListScheduling(CopiedSchedules, ScheduleLength, 1 / (i + 1));
-    if (GreedySchedule.second <= MinScheduleLength) {
+    if (GreedySchedule.second < MinScheduleLength) {
       BestSchedule = GreedySchedule;
       MinScheduleLength = GreedySchedule.second;
+      StableScheduleLengthCounter = 0;
     } else {
+      StableScheduleLengthCounter++;
       for (auto Schedule: CopiedSchedules)
         for (auto Item: Schedule)
           delete Item.second;

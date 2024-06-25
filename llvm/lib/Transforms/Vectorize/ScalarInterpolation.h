@@ -171,7 +171,9 @@ private:
 
   ResourceHandler* ResHandler;
 
-  int RepeatFactor;
+  int Budget;
+
+  int StabilityLimit;
 
   DenseMap<const char *, DenseMap<Type *, unsigned>> InstructionTypeMap;
 
@@ -196,8 +198,8 @@ private:
   OperationNode* getScheduleOf(VPRecipeBase& R, DenseMap<Value*, OperationNode*> ReadyValues);
 
 public:
-  ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int RepeatFactor)
-      : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResHandler(new ResourceHandlerX86()), RepeatFactor(RepeatFactor) {}
+  ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int Budget, int StabilityLimit)
+      : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResHandler(new ResourceHandlerX86()), Budget(Budget), StabilityLimit(StabilityLimit) {}
 
   Instruction *getUnderlyingInstructionOfRecipe(VPRecipeBase &R);
 
