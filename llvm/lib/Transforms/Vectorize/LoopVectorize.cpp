@@ -9606,18 +9606,9 @@ void VPWidenIntOrFpInductionRecipe::execute(VPTransformState &State) {
   // FIXME: If the step is non-constant, we create the vector splat with
   //        IRBuilder. IRBuilder can constant-fold the multiply, but it doesn't
   //        handle a constant vector splat.
-  Value *SplatVF = nullptr;
-  if (!Step->getType()->isFloatingPointTy()) {
-    Value *UpdatedMul = Builder.CreateAdd(
-        Builder.CreateBinOp(MulOp, Step, ConstantInt::get(Mul->getType(), State.SIFactor)), Mul);
-    SplatVF = isa<Constant>(Mul)
-            ? ConstantVector::getSplat(State.VF, cast<Constant>(UpdatedMul))
-            : Builder.CreateVectorSplat(State.VF, UpdatedMul);
-  } else {
-    SplatVF = isa<Constant>(Mul)
-            ? ConstantVector::getSplat(State.VF, cast<Constant>(Mul))
-            : Builder.CreateVectorSplat(State.VF, Mul);
-  }
+  Value *SplatVF = isa<Constant>(Mul)
+                       ? ConstantVector::getSplat(State.VF, cast<Constant>(Mul))
+                       : Builder.CreateVectorSplat(State.VF, Mul);
   Builder.restoreIP(CurrIP);
 
   // We may need to add the step a number of times, depending on the unroll
@@ -9636,7 +9627,11 @@ void VPWidenIntOrFpInductionRecipe::execute(VPTransformState &State) {
         Builder.CreateBinOp(AddOp, LastInduction, SplatVF, "step.add"));
     LastInduction->setDebugLoc(EntryVal->getDebugLoc());
   }
-
+  if (State.SIFactor > 0) {
+    SplatVF = ConstantVector::getSplat(State.VF, cast<Constant>(ConstantInt::get(Mul->getType(), State.SIFactor)));
+    LastInduction = cast<Instruction>(
+        Builder.CreateBinOp(AddOp, LastInduction, SplatVF, "step.add"));
+  }
   LastInduction->setName("vec.ind.next");
   VecInd->addIncoming(SteppedStart, VectorPH);
   // Add induction update using an incorrect block temporarily. The phi node
@@ -10333,11 +10328,10 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   int BestScheduleLength = VectorSchedule.second;
   while (true) {
     auto GreedySchedule = repeatListScheduling(Schedules, VectorSchedule.second);
-    if (SIFactor == 0)
-      BestScheduleLength = GreedySchedule.second;
-    if (GreedySchedule.second > BestScheduleLength)
+    if (GreedySchedule.second > BestScheduleLength && SIFactor > 0)
       break;
     if (SIFactor == 0) {
+      BestScheduleLength = GreedySchedule.second;
       Schedules.push_back(ScalarSchedule.first);
       SIFactor += 1;
     } else {
