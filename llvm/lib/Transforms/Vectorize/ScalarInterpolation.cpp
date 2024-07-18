@@ -106,19 +106,32 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(Loop *OrigLoop) {
   }
 }
 
+bool ScalarInterpolationCostModel::hasFloatingPointInstruction(VPBasicBlock *VPBB) {
+  return any_of(*VPBB, [&](VPRecipeBase &R) {
+    auto* Instr = getUnderlyingInstructionOfRecipe(R);
+    if (!Instr)
+      return false;
+    return Instr->getType()->isFloatingPointTy();
+  });
+}
+
+bool ScalarInterpolationCostModel::hasInstructionWithUnknownResource(llvm::VPBasicBlock *VPBB) {
+  return any_of(*VPBB, [&](VPRecipeBase &R) {
+    auto* Instr = getUnderlyingInstructionOfRecipe(R);
+    if (!Instr)
+      return false;
+    return ResHandler->hasResourceFor(*Instr, false)
+           && ResHandler->hasResourceFor(*Instr, true);
+  });
+}
+
 bool ScalarInterpolationCostModel::isLegalToInterpolate(llvm::VPlan &Plan) {
   if (hasNonInterpolatableRecipe(Plan))
     return false;
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   for (VPBasicBlock *VPBB: reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
-    bool HasFloatInstructions = any_of(*VPBB, [&](VPRecipeBase &R) {
-      auto* Instr = getUnderlyingInstructionOfRecipe(R);
-      if (!Instr)
-        return false;
-      return Instr->getType()->isFloatingPointTy();
-    });
-    if (HasFloatInstructions)
+    if (hasFloatingPointInstruction(VPBB) || hasInstructionWithUnknownResource(VPBB))
       return false;
   }
   return true;
@@ -432,6 +445,8 @@ int ResourceHandler::scheduleInstructionOnResource(Instruction& Instr, bool IsVe
 }
 
 bool ResourceHandler::isResourceAvailableFor(Instruction& Instr, bool isVector) {
+  if (!getResourcesFor(Instr, isVector).size())
+    return true;
   return any_of(getResourcesFor(Instr, isVector), [&](int Resource) {
     return isResourceAvailable(Resource);
   });

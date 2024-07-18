@@ -31,11 +31,13 @@ private:
 public:
   ResourceHandler() {}
 
-  bool isResourceAvailable(int Resource) { return Resources[Resource]; }
+  bool hasResourceFor(Instruction& Instr, bool isVector) { return getResourcesFor(Instr, isVector).size() > 0; }
 
-  void setResourceUnavailable(int Resource) { Resources[Resource] = false; }
+  bool isResourceAvailable(int Resource) { return Resources[Resource] || Resource == -1; }
 
-  void setResourceAvailable(int Resource) { Resources[Resource] = true; }
+  void setResourceUnavailable(int Resource) { if (Resource != -1) Resources[Resource] = false; }
+
+  void setResourceAvailable(int Resource) { if (Resource != -1) Resources[Resource] = true; }
 
   int scheduleInstructionOnResource(Instruction& Instr, bool isVector, float RandomWeight);
 
@@ -196,6 +198,10 @@ private:
   unsigned getValueFromMap(const char* I, Type *T);
 
   OperationNode* getScheduleOf(VPRecipeBase& R, DenseMap<Value*, OperationNode*> ReadyValues);
+
+  bool hasFloatingPointInstruction(VPBasicBlock *VPBB);
+
+  bool hasInstructionWithUnknownResource(VPBasicBlock *VPBB);
 
 public:
   ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int Budget, int StabilityLimit)

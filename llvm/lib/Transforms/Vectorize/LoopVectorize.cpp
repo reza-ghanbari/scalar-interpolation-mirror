@@ -10449,6 +10449,8 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runLi
     while (NextNode) {
       NextNode->setStartTime(Cycle);
       ExecutionList[NextNode] = ResHandler->scheduleInstructionOnResource(*NextNode->getInstruction(), NextNode->getSIFactor() == 0, RandomWeight);
+      if (ExecutionList[NextNode] == -1)
+        NextNode->setDuration(0);
       ReadyList.erase(NextNode);
       for (auto Successor: NextNode->getSuccessors()) {
         if (all_of(Successor->getPredecessors(), [&ScheduleList, &ExecutionList, Cycle](auto& Item)
