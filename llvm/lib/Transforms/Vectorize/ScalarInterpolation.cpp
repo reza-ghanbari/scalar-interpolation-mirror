@@ -5,7 +5,7 @@
 #include "ScalarInterpolation.h"
 #include "VPlanCFG.h"
 
-#define DEBUG_TYPE "scalar-interpolation"
+//#define DEBUG_TYPE "scalar-interpolation"
 
 using namespace llvm;
 
@@ -115,24 +115,18 @@ bool ScalarInterpolationCostModel::hasFloatingPointInstruction(VPBasicBlock *VPB
   });
 }
 
-bool ScalarInterpolationCostModel::hasInstructionWithUnknownResource(llvm::VPBasicBlock *VPBB) {
-  return any_of(*VPBB, [&](VPRecipeBase &R) {
-    auto* Instr = getUnderlyingInstructionOfRecipe(R);
-    if (!Instr)
-      return false;
-    return ResHandler->hasResourceFor(*Instr, false)
-           && ResHandler->hasResourceFor(*Instr, true);
-  });
-}
-
 bool ScalarInterpolationCostModel::isLegalToInterpolate(llvm::VPlan &Plan) {
-  if (hasNonInterpolatableRecipe(Plan))
+  if (hasNonInterpolatableRecipe(Plan)) {
+    LLVM_DEBUG(dbgs() << "LV(SI): Not legal to interpolate due to non-interpolatable recipe\n");
     return false;
+  }
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   for (VPBasicBlock *VPBB: reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
-    if (hasFloatingPointInstruction(VPBB) || hasInstructionWithUnknownResource(VPBB))
+    if (hasFloatingPointInstruction(VPBB)) {
+      LLVM_DEBUG(dbgs() << "LV(SI): Not legal to interpolate due to floating point instructions\n");
       return false;
+    }
   }
   return true;
 }
@@ -158,6 +152,10 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *
   unsigned SuggestedSI = (IsScalarInterpolationEnabled && UserSI == 0)
                              ? getSIFactor(Plan) : UserSI;
   unsigned MaxSI = Plan.getMaximumSIF(MaxSafeElements);
+  LLVM_DEBUG(
+        dbgs() << "LV(SI): SuggestedSI=" << SuggestedSI << ", MaxSI=" << MaxSI
+                 << "\n"
+  );
   return MaxSI < SuggestedSI ? 0 : SuggestedSI;
 }
 

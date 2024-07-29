@@ -9,6 +9,9 @@
 #include "llvm/IR/Instruction.h"
 #include <random>
 
+#define LV_NAME "loop-vectorize"
+#define DEBUG_TYPE LV_NAME
+
 using namespace llvm;
 
 class OperationNode;
@@ -201,7 +204,7 @@ private:
 
   bool hasFloatingPointInstruction(VPBasicBlock *VPBB);
 
-  bool hasInstructionWithUnknownResource(VPBasicBlock *VPBB);
+  bool hasInstructionWithUnknownResource();
 
 public:
   ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int Budget, int StabilityLimit)
@@ -234,6 +237,8 @@ public:
   void setSIFactorForScheduleMap(DenseMap<Value*, OperationNode*> ScheduleMap, unsigned SIFactor);
 
   void setPrioritiesForScheduleMap(DenseMap<Value*, OperationNode*> ScheduleMap);
+
+  bool isResourcesAvailableForScheduleMap(DenseMap<llvm::Value *, OperationNode *> ScheduleMap);
 
   OperationNode* selectNextNodeToSchedule(SmallSet<OperationNode*, 30> ReadyNodes, int ScheduleLength);
 };

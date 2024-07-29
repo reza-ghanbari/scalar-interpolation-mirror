@@ -10288,6 +10288,9 @@ std::pair<DenseMap<Value*, OperationNode*>, int> ScalarInterpolationCostModel::g
   }
   setSIFactorForScheduleMap(ScheduleMap, SIF);
   setPrioritiesForScheduleMap(ScheduleMap);
+  if (!isResourcesAvailableForScheduleMap(ScheduleMap)) {
+    return {ScheduleMap, -1};
+  }
   return {ScheduleMap, FinalTime};
 }
 
@@ -10295,6 +10298,16 @@ void ScalarInterpolationCostModel::setSIFactorForScheduleMap(DenseMap<llvm::Valu
   for (auto& Item: ScheduleMap) {
     Item.second->setSIFactor(SIFactor);
   }
+}
+
+bool ScalarInterpolationCostModel::isResourcesAvailableForScheduleMap(DenseMap<llvm::Value *, OperationNode *> ScheduleMap) {
+  return all_of(ScheduleMap, [this](auto& Item) {
+    if (!ResHandler->isResourceAvailableFor(*Item.second->getInstruction(), Item.second->isVector()) && Item.second->getDuration() != 0) {
+      LLVM_DEBUG(dbgs() << "LV(SI): Resource is not available for " << *Item.first << "\n");
+      return false;
+    }
+    return true;
+  });
 }
 
 void ScalarInterpolationCostModel::setPrioritiesForScheduleMap(DenseMap<llvm::Value *, OperationNode *> ScheduleMap) {
@@ -10323,11 +10336,22 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   int SIFactor = 0;
   this->VF = getProfitableVF(Plan);
   auto VectorSchedule = getScheduleMap(Plan, this->VF, 0);
+  if (VectorSchedule.second == -1)
+    return 0;
   auto ScalarSchedule = getScheduleMap(Plan, ElementCount::getFixed(1), SIFactor);
+  if (ScalarSchedule.second == -1)
+    return 0;
   SmallVector<DenseMap<Value*, OperationNode*>> Schedules = {VectorSchedule.first};
   int BestScheduleLength = VectorSchedule.second;
+  LLVM_DEBUG(
+      dbgs() << "LV(SI): Initial Vector Schedule Length: " << BestScheduleLength
+             << ", Initial Scalar Schedule Length: " << ScalarSchedule.second
+             << "\n");
   while (true) {
     auto GreedySchedule = repeatListScheduling(Schedules, VectorSchedule.second);
+    LLVM_DEBUG(
+        dbgs() << "LV(SI): Greedy Schedule Length for SI=" << SIFactor << ": " << GreedySchedule.second
+               << "\n");
     if (GreedySchedule.second > BestScheduleLength && SIFactor > 0)
       break;
     if (SIFactor == 0) {
@@ -10405,11 +10429,11 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
 //    return A->getStartTime() < B->getStartTime()
 //           || (A->getStartTime() == B->getStartTime() && A->getEndTime() < B->getEndTime());
 //  });
-//  errs() << "\n\n\n\nSI: SCHEDULE\n";
+//  LLVM_DEBUG(dbgs() << "\n\n\n\nSI: SCHEDULE\n");
 //  for (auto Node: Nodes) {
-//    errs() << "SI: Node: " << *Node->getInstruction() << "\n\tStart: " << Node->getStartTime() << " End: " << Node->getEndTime() << "\n";
+//    LLVM_DEBUG(dbgs() << "SI: Node: " << *Node->getInstruction() << "\n\tStart: " << Node->getStartTime() << " End: " << Node->getEndTime() << "\n");
 //  }
-//  errs() << "SI: END OF SCHEDULE\n\n\n\n";
+//  LLVM_DEBUG(dbgs() << "SI: END OF SCHEDULE\n\n\n\n");
   int MinScheduleLength = BestSchedule.second;
   int StableScheduleLengthCounter = 0;
   for (int i = 1; i < Budget && StableScheduleLengthCounter < StabilityLimit; i++) {
@@ -10461,17 +10485,17 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runLi
       NextNode = selectNextNodeToSchedule(ReadyList, ScheduleLength);
     }
     Cycle++;
-//    errs() << "\n\nSI: Cycle " << Cycle << ". Here is Ready List contents:\n";
+//    LLVM_DEBUG(dbgs() << "\n\nSI: Cycle " << Cycle << ". Here is Ready List contents:\n");
 //    for (auto Item: ReadyList) {
-//      Item->print(errs());
+//      LLVM_DEBUG(Item->print(errs()));
 //    }
-//    errs() << "SI: End of Ready List\n\n";
-//    errs() << "\n\nSI: Cycle " << Cycle << ". Here is Execution List contents:\n";
+//    LLVM_DEBUG(dbgs() << "SI: End of Ready List\n\n");
+//    LLVM_DEBUG(dbgs() << "\n\nSI: Cycle " << Cycle << ". Here is Execution List contents:\n");
 //    for (auto Item: ExecutionList) {
-//      Item.first->print(errs());
-//      errs() << "\t" << Item.second << "\n";
+//      LLVM_DEBUG(Item.first->print(errs()));
+//      LLVM_DEBUG(dbgs() << "\t" << Item.second << "\n");
 //    }
-//    errs() << "SI: End of Execution List\n\n";
+//    LLVM_DEBUG(dbgs() << "SI: End of Execution List\n\n");
     for (auto NodePair: ExecutionList) {
       auto Node = NodePair.first;
       if (Node->getEndTime() <= Cycle) {
