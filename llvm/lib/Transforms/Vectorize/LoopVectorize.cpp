@@ -10341,7 +10341,7 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   auto ScalarSchedule = getScheduleMap(Plan, ElementCount::getFixed(1), SIFactor);
   if (ScalarSchedule.second == -1)
     return 0;
-  if (ScalarSchedule == 0)
+  if (ScalarSchedule.second == 0)
     return 16; // Default maximum value for scalar interpolation factor. TODO-SI: select that based on alignment constraints
   SmallVector<DenseMap<Value*, OperationNode*>> Schedules = {VectorSchedule.first};
   int BestScheduleLength = VectorSchedule.second;
