@@ -10302,7 +10302,7 @@ void ScalarInterpolationCostModel::setSIFactorForScheduleMap(DenseMap<llvm::Valu
 
 bool ScalarInterpolationCostModel::isResourcesAvailableForScheduleMap(DenseMap<llvm::Value *, OperationNode *> ScheduleMap) {
   return all_of(ScheduleMap, [this](auto& Item) {
-    if (!ResHandler->isResourceAvailableFor(*Item.second->getInstruction(), Item.second->isVector()) && Item.second->getDuration() != 0) {
+    if (!ResHandler->hasResourceFor(*Item.second->getInstruction(), Item.second->isVector()) && Item.second->getDuration() != 0) {
       LLVM_DEBUG(dbgs() << "LV(SI): Resource is not available for " << *Item.first << "\n");
       return false;
     }

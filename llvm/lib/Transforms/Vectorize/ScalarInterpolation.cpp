@@ -151,6 +151,9 @@ unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *
     return 0;
   unsigned SuggestedSI = (IsScalarInterpolationEnabled && UserSI == 0)
                              ? getSIFactor(Plan) : UserSI;
+  LLVM_DEBUG(
+        dbgs() << "LV(SI):" << (IsScalarInterpolationEnabled ? " SI enabled" : "SI disabled") << ", UserSI is " << UserSI << "\n"
+  );
   unsigned MaxSI = Plan.getMaximumSIF(MaxSafeElements);
   LLVM_DEBUG(
         dbgs() << "LV(SI): SuggestedSI=" << SuggestedSI << ", MaxSI=" << MaxSI
