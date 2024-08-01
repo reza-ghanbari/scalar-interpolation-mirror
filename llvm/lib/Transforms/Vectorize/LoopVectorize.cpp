@@ -10336,11 +10336,13 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   int SIFactor = 0;
   this->VF = getProfitableVF(Plan);
   auto VectorSchedule = getScheduleMap(Plan, this->VF, 0);
-  if (VectorSchedule.second == -1)
+  if (VectorSchedule.second == -1 || VectorSchedule.second == 0)
     return 0;
   auto ScalarSchedule = getScheduleMap(Plan, ElementCount::getFixed(1), SIFactor);
   if (ScalarSchedule.second == -1)
     return 0;
+  if (ScalarSchedule == 0)
+    return 16; // Default maximum value for scalar interpolation factor. TODO-SI: select that based on alignment constraints
   SmallVector<DenseMap<Value*, OperationNode*>> Schedules = {VectorSchedule.first};
   int BestScheduleLength = VectorSchedule.second;
   LLVM_DEBUG(
