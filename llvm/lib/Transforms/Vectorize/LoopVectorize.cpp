@@ -10359,14 +10359,13 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
     if (SIFactor == 0) {
       BestScheduleLength = GreedySchedule.second;
       Schedules.push_back(ScalarSchedule.first);
-      SIFactor += 1;
     } else {
       for (int i = 0; i < SIFactor; ++i)
         Schedules.push_back(ScalarSchedule.first);
-      SIFactor *= 2;
     }
+    SIFactor += 1;
   }
-  return (SIFactor == 1) ? 0 : (SIFactor / 2);
+  return SIFactor - 1;
 }
 
 SmallSet<OperationNode*, 30> ScalarInterpolationCostModel::getReadyNodes(SmallVector<DenseMap<Value*, OperationNode*>> schedules) {
