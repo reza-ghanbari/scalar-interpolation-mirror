@@ -10356,13 +10356,9 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
                << "\n");
     if (GreedySchedule.second > BestScheduleLength && SIFactor > 0)
       break;
-    if (SIFactor == 0) {
+    if (SIFactor == 0)
       BestScheduleLength = GreedySchedule.second;
-      Schedules.push_back(ScalarSchedule.first);
-    } else {
-      for (int i = 0; i < SIFactor; ++i)
-        Schedules.push_back(ScalarSchedule.first);
-    }
+    Schedules.push_back(ScalarSchedule.first);
     SIFactor += 1;
   }
   return SIFactor - 1;
