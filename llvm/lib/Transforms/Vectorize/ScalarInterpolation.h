@@ -206,6 +206,8 @@ private:
 
   bool hasInstructionWithUnknownResource();
 
+  bool isInWorkingList(Instruction* Instr, SmallVector<OperationNode*> WorkingList);
+
 public:
   ScalarInterpolationCostModel(LoopVectorizationCostModel& CM, Loop *OrigLoop, std::optional<unsigned int> VScale, int Budget, int StabilityLimit)
       : CM(CM), OrigLoop(OrigLoop), VScale(VScale), ResHandler(new ResourceHandlerX86()), Budget(Budget), StabilityLimit(StabilityLimit) {}

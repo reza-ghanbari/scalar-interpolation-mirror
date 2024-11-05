@@ -10207,27 +10207,6 @@ void OperationNode::setDuration(InstructionCost Duration) {
   }
 }
 
-DenseMap<Value*, OperationNode*> ScalarInterpolationCostModel::initScheduleMap(VPlan& Plan, ElementCount VF) {
-  ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
-    Plan.getEntry());
-  DenseMap<Value*, OperationNode*> ScheduleMap;
-  for (VPBasicBlock *SIVPBB :
-       reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
-    for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
-      Instruction* Instr = getUnderlyingInstructionOfRecipe(R);
-      if (Instr && !ScheduleMap.contains(Instr)) {
-        auto SICost = CM.getInstructionCostForSI(Instr, VF);
-        if (SICost.isValid() && SICost.getValue() == 0) {
-          auto NewNode = new OperationNode(Instr, 0);
-          NewNode->setDuration(SICost);
-          ScheduleMap.insert({Instr, NewNode});
-        }
-      }
-    }
-  }
-  return ScheduleMap;
-}
-
 OperationNode* ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, DenseMap<Value*, OperationNode*> ScheduleMap) {
   int FirstScheduleTime = 0;
   auto* NewNode = new OperationNode(getUnderlyingInstructionOfRecipe(R), 0);
@@ -10247,24 +10226,24 @@ OperationNode* ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, Dens
   return NewNode;
 }
 
+bool ScalarInterpolationCostModel::isInWorkingList(Instruction* Instr, SmallVector<OperationNode*> WorkingList) {
+  return any_of(WorkingList, [Instr](auto& Item) { return Item->getInstruction() == Instr; });
+}
+
 std::pair<DenseMap<Value*, OperationNode*>, int> ScalarInterpolationCostModel::getScheduleMap(VPlan &Plan, ElementCount VF, int SIF) {
   ReversePostOrderTraversal<VPBlockDeepTraversalWrapper<VPBlockBase *>> RPOT(
       Plan.getEntry());
   int Time = 0, FinalTime = 0;
   bool HasUnprocessedRecipe = true;
-  DenseMap<Value*, OperationNode*> ScheduleMap = this->initScheduleMap(Plan, VF);
+  DenseMap<Value*, OperationNode*> ScheduleMap;
   SmallVector<OperationNode*> WorkingList;
-  for (auto Item: ScheduleMap) {
-    WorkingList.push_back(Item.second);
-  }
   while (HasUnprocessedRecipe) {
     HasUnprocessedRecipe = false;
     for (VPBasicBlock *SIVPBB :
              reverse(VPBlockUtils::blocksOnly<VPBasicBlock>(RPOT))) {
       for (VPRecipeBase &R : make_early_inc_range(*SIVPBB)) {
         auto* Instr = getUnderlyingInstructionOfRecipe(R);
-        if (!Instr || ScheduleMap.contains(Instr)
-            || !none_of(WorkingList, [Instr](auto& Item) { return Item->getInstruction() == Instr; }))
+        if (!Instr || ScheduleMap.contains(Instr) || isInWorkingList(Instr, WorkingList))
           continue;
         HasUnprocessedRecipe = true;
         if (auto NewNode = getScheduleOf(R, ScheduleMap))
@@ -10421,16 +10400,16 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
   }
   auto BestSchedule = runListScheduling(CopiedSchedules, ScheduleLength, 1);
 
-//  SmallVector<OperationNode*> Nodes(BestSchedule.first.begin(), BestSchedule.first.end());
-//  llvm::sort(Nodes, [](OperationNode* A, OperationNode* B) {
-//    return A->getStartTime() < B->getStartTime()
-//           || (A->getStartTime() == B->getStartTime() && A->getEndTime() < B->getEndTime());
-//  });
-//  LLVM_DEBUG(dbgs() << "\n\n\n\nSI: SCHEDULE\n");
-//  for (auto Node: Nodes) {
-//    LLVM_DEBUG(dbgs() << "SI: Node: " << *Node->getInstruction() << "\n\tStart: " << Node->getStartTime() << " End: " << Node->getEndTime() << "\n");
-//  }
-//  LLVM_DEBUG(dbgs() << "SI: END OF SCHEDULE\n\n\n\n");
+  SmallVector<OperationNode*> Nodes(BestSchedule.first.begin(), BestSchedule.first.end());
+  llvm::sort(Nodes, [](OperationNode* A, OperationNode* B) {
+    return A->getStartTime() < B->getStartTime()
+           || (A->getStartTime() == B->getStartTime() && A->getEndTime() < B->getEndTime());
+  });
+  LLVM_DEBUG(dbgs() << "\n\n\n\nSI: SCHEDULE\n");
+  for (auto Node: Nodes) {
+    LLVM_DEBUG(dbgs() << "SI: Node: " << *Node->getInstruction() << "\n\tStart: " << Node->getStartTime() << " End: " << Node->getEndTime() << "\n");
+  }
+  LLVM_DEBUG(dbgs() << "SI: END OF SCHEDULE\n\n\n\n");
   int MinScheduleLength = BestSchedule.second;
   int StableScheduleLengthCounter = 0;
   for (int i = 1; i < Budget && StableScheduleLengthCounter < StabilityLimit; i++) {
@@ -10453,6 +10432,7 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::repea
   return BestSchedule;
 }
 
+//
 std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runListScheduling(SmallVector<DenseMap<Value*, OperationNode*>> schedules, int ScheduleLength, float RandomWeight) {
   auto ReadyList = getReadyNodes(schedules);
   DenseMap<OperationNode*, int> ExecutionList;
@@ -10508,7 +10488,6 @@ std::pair<SmallSet<OperationNode*, 30>, int> ScalarInterpolationCostModel::runLi
     }
   }
   return {ScheduleList, Cycle};
-//  return nullptr;
 }
 
 // Process the loop in the VPlan-native vectorization path. This path builds
