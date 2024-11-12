@@ -10322,6 +10322,7 @@ void ScalarInterpolationCostModel::setPrioritiesForScheduleMap(DenseMap<llvm::Va
 unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan, unsigned int UserIC) {
   int SIFactor = 0;
   this->VF = getProfitableVF(Plan);
+  int VFValue = this->VF.getKnownMinValue();
   this->IC = getProfitableIC(UserIC);
   auto VectorSchedule = getScheduleMap(Plan, this->VF, 0);
   if (VectorSchedule.second == -1 || VectorSchedule.second == 0)
@@ -10336,19 +10337,22 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan, unsigned int Use
     Schedules.push_back(deepCopySchedule(VectorSchedule.first));
   }
   int BestScheduleLength = VectorSchedule.second;
+  int NumOfIterations = VFValue;
   LLVM_DEBUG(
       dbgs() << "LV(SI): Initial Vector Schedule Length: " << BestScheduleLength
              << ", Initial Scalar Schedule Length: " << ScalarSchedule.second
              << "\n");
-  while (true) {
+  while (SIFactor <= VFValue * IC) {
     auto GreedySchedule = repeatListScheduling(Schedules, VectorSchedule.second);
     LLVM_DEBUG(
         dbgs() << "LV(SI): Greedy Schedule Length for SI=" << SIFactor << ": " << GreedySchedule.second
                << "\n");
-    if (GreedySchedule.second > BestScheduleLength && SIFactor > 0)
+    if (GreedySchedule.second * NumOfIterations > BestScheduleLength * (SIFactor + VFValue) && SIFactor > 0)
       break;
-    if (SIFactor == 0)
+    else {
       BestScheduleLength = GreedySchedule.second;
+      NumOfIterations = VFValue + SIFactor;
+    }
     Schedules.push_back(ScalarSchedule.first);
     SIFactor += 1;
   }
