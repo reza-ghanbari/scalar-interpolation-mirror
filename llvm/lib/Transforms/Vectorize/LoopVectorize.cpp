@@ -9343,7 +9343,7 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
 
   ScalarInterpolationCostModel* SICostModel = new ScalarInterpolationCostModel(CM, OrigLoop, getVScaleForTuning(OrigLoop, TTI), 80, 10);
   auto MaxLimit = llvm::bit_floor(Legal->getMaxSafeVectorWidthInBits() / CM.getSmallestAndWidestTypes().second);
-  UserSI = SICostModel->getProfitableSIFactor(*Plan, OrigLoop, UserSI, MaxLimit, ScalarInterpolationEnabled);
+  UserSI = SICostModel->getProfitableSIFactor(*Plan, Hints.getInterleave(), UserSI, MaxLimit, ScalarInterpolationEnabled);
   Plan->setSIF(UserSI);
   VPlanTransforms::applyInterpolation(*Plan, OrigLoop);
 
@@ -10173,6 +10173,12 @@ Value *VPTransformState::get(VPValue *Def, unsigned Part) {
   return VectorValue;
 }
 
+int ScalarInterpolationCostModel::getProfitableIC(unsigned int UserIC) {
+  int IC = CM.selectInterleaveCount(VF, CM.expectedCost(VF).first);
+  IC = UserIC > 0 ? UserIC : IC;
+  return IC;
+}
+
 ElementCount ScalarInterpolationCostModel::getProfitableVF(VPlan& Plan) {
   ElementCount BestVF;
   int MinCost = *InstructionCost::getMax().getValue();
@@ -10213,6 +10219,8 @@ OperationNode* ScalarInterpolationCostModel::getScheduleOf(VPRecipeBase& R, Dens
   for (auto Op: R.operands()) {
     if (Op->isLiveIn())
       continue;
+    if (Op->hasDefiningRecipe() && Op->getDefiningRecipe()->isPhi())
+        continue;
     if (auto* OpInstr = getUnderlyingInstructionOfRecipe(*Op->getDefiningRecipe())) {
       if (!ScheduleMap.contains(OpInstr)) {
         return nullptr;
@@ -10311,9 +10319,10 @@ void ScalarInterpolationCostModel::setPrioritiesForScheduleMap(DenseMap<llvm::Va
   }
 }
 
-unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
+unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan, unsigned int UserIC) {
   int SIFactor = 0;
   this->VF = getProfitableVF(Plan);
+  this->IC = getProfitableIC(UserIC);
   auto VectorSchedule = getScheduleMap(Plan, this->VF, 0);
   if (VectorSchedule.second == -1 || VectorSchedule.second == 0)
     return 0;
@@ -10323,6 +10332,9 @@ unsigned ScalarInterpolationCostModel::getSIFactor(VPlan& Plan) {
   if (ScalarSchedule.second == 0)
     return 16; // Default maximum value for scalar interpolation factor. TODO-SI: select that based on alignment constraints
   SmallVector<DenseMap<Value*, OperationNode*>> Schedules = {VectorSchedule.first};
+  for (unsigned int It = 1; It < IC; ++It) {
+    Schedules.push_back(deepCopySchedule(VectorSchedule.first));
+  }
   int BestScheduleLength = VectorSchedule.second;
   LLVM_DEBUG(
       dbgs() << "LV(SI): Initial Vector Schedule Length: " << BestScheduleLength

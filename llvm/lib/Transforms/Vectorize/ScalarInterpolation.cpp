@@ -146,11 +146,11 @@ bool ScalarInterpolationCostModel::hasNonInterpolatableRecipe(llvm::VPlan &Plan)
   return false;
 }
 
-unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, Loop *OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled) {
+unsigned ScalarInterpolationCostModel::getProfitableSIFactor(VPlan &Plan, unsigned int UserIC, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled) {
   if (!isLegalToInterpolate(Plan))
     return 0;
   unsigned SuggestedSI = (IsScalarInterpolationEnabled && UserSI == 0)
-                             ? getSIFactor(Plan) : UserSI;
+                             ? getSIFactor(Plan, UserIC) : UserSI;
   LLVM_DEBUG(
         dbgs() << "LV(SI):" << (IsScalarInterpolationEnabled ? " SI enabled" : "SI disabled") << ", UserSI is " << UserSI << "\n"
   );

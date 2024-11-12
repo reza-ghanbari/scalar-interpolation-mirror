@@ -174,6 +174,8 @@ private:
 
   ElementCount VF;
 
+  unsigned int IC;
+
   ResourceHandler* ResHandler;
 
   int Budget;
@@ -220,13 +222,15 @@ public:
 
   bool containsNonInterpolatableRecipe(VPlan& Plan);
 
-  unsigned getProfitableSIFactor(VPlan& Plan, Loop* OrigLoop, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
+  unsigned getProfitableSIFactor(VPlan& Plan, unsigned int UserIC, unsigned UserSI, unsigned MaxSafeElements, bool IsScalarInterpolationEnabled);
 
   std::pair<DenseMap<Value*, OperationNode*>, int> getScheduleMap(VPlan &Plan, ElementCount VF, int SIF);
 
   DenseMap<Value*, OperationNode*> deepCopySchedule(DenseMap<Value*, OperationNode*> Schedule);
 
-  unsigned getSIFactor(VPlan &Plan);
+  unsigned getSIFactor(VPlan &Plan, unsigned int UserIC);
+
+  int getProfitableIC(unsigned UserIC);
 
   ElementCount getProfitableVF(VPlan &Plan);
 
